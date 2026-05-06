@@ -8,8 +8,33 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         #map { height: 100vh; width: 100%; z-index: 0; }
-        /* Google Maps InfoWindowのカスタマイズ用 */
-        .gm-style-iw-d { overflow: auto !important; max-height: none !important; }
+        
+        /* ポップアップ内の表示設定 */
+        .info-window-container {
+            padding: 8px;
+            max-width: 320px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: sans-serif;
+        }
+
+        .info-content-value {
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #374151;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+
+        .info-label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #6b7280;
+            display: block;
+            margin-top: 8px;
+        }
+
         input::placeholder { font-size: 0.8rem; }
     </style>
 </head>
@@ -23,27 +48,25 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 </svg>
             </div>
-            <div>
-                <h1 class="text-sm font-bold text-gray-800 tracking-tight">Google Maps 検索マップ</h1>
+            <div class="flex-1">
+                <h1 class="text-sm font-bold text-gray-800 tracking-tight">拠点マップ</h1>
                 <div id="status-badge" class="text-[10px] text-gray-400 font-medium">読込中...</div>
             </div>
         </div>
         
-        <!-- 検索バーグループ -->
+        <!-- 検索バー -->
         <div class="flex flex-col sm:flex-row gap-2 w-full max-w-2xl">
-            <!-- 1. リスト絞り込み -->
             <div class="relative flex-1">
                 <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-500">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 8.293A1 1 0 013 7.586V4z" />
                     </svg>
                 </span>
-                <input type="text" id="search-input" placeholder="リストから絞り込み..." 
+                <input type="text" id="search-input" placeholder="キーワードで絞り込み..." 
                     class="w-full pl-9 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 >
             </div>
 
-            <!-- 2. 地図住所検索 -->
             <div class="relative flex-1 flex gap-1">
                 <div class="relative flex-1">
                     <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-emerald-500">
@@ -51,24 +74,20 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </span>
-                    <input type="text" id="address-search-input" placeholder="住所・枝番を検索..." 
+                    <input type="text" id="address-search-input" placeholder="住所検索..." 
                         class="w-full pl-9 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 transition-all outline-none"
                     >
                 </div>
-                <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-colors">
-                    移動
-                </button>
+                <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-colors">移動</button>
             </div>
         </div>
     </header>
 
     <main>
         <div id="map"></div>
-        
-        <!-- エラー通知 -->
         <div id="error-msg" class="hidden absolute top-24 left-1/2 -translate-x-1/2 z-[1000] bg-white text-red-600 px-6 py-3 rounded-xl shadow-xl border border-red-100 text-xs text-center">
-            <p class="font-bold">データの取得に失敗しました</p>
-            <p class="text-[10px] text-gray-500 mt-1">APIキーまたはスプレッドシート設定を確認してください。</p>
+            <p class="font-bold">データ取得エラー</p>
+            <p class="text-[10px] text-gray-500 mt-1">スプレッドシートの公開設定を確認してください。</p>
         </div>
     </main>
 
@@ -76,30 +95,23 @@
         /**
          * --- 設定エリア ---
          */
-        const GOOGLE_MAPS_API_KEY = "AIzaSyDYg1z0rVrz1S3KkKqiHpWBcBzjtNr-eKY";
+        const GOOGLE_MAPS_API_KEY = "AIzaSyDYg1z0rVrz1S3KkKqiHpWBcBzjtNr-eKY"; 
         const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=1895756622&single=true&output=csv';
 
-        let map;
-        let geocoder;
-        let infoWindow;
+        let map, geocoder, infoWindow;
         let markers = [];
         let allData = [];
         let searchResultMarker = null;
 
-        // Google Mapsスクリプトの動的読み込み
+        // Google Mapsスクリプトの読み込み
         function loadGoogleMaps() {
-            if (GOOGLE_MAPS_API_KEY === "ここにAPIキーを貼り付けてください") {
-                alert("APIキーが設定されていません。コードの冒頭を確認してください。");
-                return;
-            }
             const script = document.createElement("script");
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&libraries=places`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap`;
             script.async = true;
             script.defer = true;
             document.head.appendChild(script);
         }
 
-        // 地図初期化
         window.initMap = function() {
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 35.6812, lng: 139.7671 },
@@ -110,10 +122,8 @@
                 zoomControl: true,
                 zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }
             });
-
             geocoder = new google.maps.Geocoder();
             infoWindow = new google.maps.InfoWindow();
-            
             fetchData();
         };
 
@@ -125,7 +135,7 @@
                 complete: function(results) {
                     if (results.data && results.data.length > 0) {
                         allData = results.data;
-                        renderMarkers(""); // 初回プロット
+                        renderMarkers("");
                     } else {
                         showError();
                     }
@@ -139,29 +149,23 @@
             document.getElementById('status-badge').textContent = 'エラー';
         }
 
-        // マーカーのレンダリング
         function renderMarkers(keyword) {
-            // 既存のマーカーを削除
             markers.forEach(m => m.setMap(null));
             markers = [];
 
             const lowerKeyword = keyword.toLowerCase();
             const keys = Object.keys(allData[0] || {});
-            
-            const latKey = keys.find(k => ['緯度', 'lat', 'latitude'].some(kw => k.toLowerCase().includes(kw)));
-            const lngKey = keys.find(k => ['経度', 'lng', 'lon', 'longitude'].some(kw => k.toLowerCase().includes(kw)));
-            const nameKey = keys.find(k => ['名', 'name', 'タイトル', '拠点'].some(kw => k.toLowerCase().includes(kw)));
+            const latKey = keys.find(k => ['緯度', 'lat'].some(kw => k.toLowerCase().includes(kw)));
+            const lngKey = keys.find(k => ['経度', 'lng'].some(kw => k.toLowerCase().includes(kw)));
+            const nameKey = keys.find(k => ['名', 'name', 'タイトル'].some(kw => k.toLowerCase().includes(kw)));
 
-            if (!latKey || !lngKey) return showError();
+            if (!latKey || !lngKey) return;
 
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
 
             allData.forEach((row, i) => {
-                const isMatch = Object.values(row).some(val => 
-                    String(val).toLowerCase().includes(lowerKeyword)
-                );
-
+                const isMatch = Object.values(row).some(val => String(val).toLowerCase().includes(lowerKeyword));
                 if (!isMatch) return;
 
                 const lat = parseFloat(row[latKey]?.replace(/[^\d.-]/g, ''));
@@ -175,12 +179,13 @@
                         title: row[nameKey] || '地点'
                     });
 
-                    // ポップアップ内容
-                    let content = `<div style="padding:10px; min-width:200px;">`;
-                    content += `<div style="font-weight:bold; border-bottom:1px solid #eee; margin-bottom:8px; padding-bottom:4px; color:#2563eb;">${row[nameKey] || '地点 '+(i+1)}</div>`;
+                    let content = `<div class="info-window-container">`;
+                    content += `<div style="font-weight:bold; font-size:16px; border-bottom:2px solid #3b82f6; margin-bottom:12px; padding-bottom:6px; color:#1e40af;">${row[nameKey] || '地点 '+(i+1)}</div>`;
+                    
                     Object.entries(row).forEach(([k, v]) => {
                         if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
-                            content += `<div style="font-size:12px; margin-bottom:4px;"><strong>${k}:</strong> ${v}</div>`;
+                            content += `<span class="info-label">${k}</span>`;
+                            content += `<div class="info-content-value">${v}</div>`;
                         }
                     });
                     content += `</div>`;
@@ -198,66 +203,40 @@
 
             const badge = document.getElementById('status-badge');
             if (count > 0) {
-                if (keyword === "") {
-                    map.fitBounds(bounds);
-                }
+                if (keyword === "") map.fitBounds(bounds);
                 badge.textContent = `${count} 件表示中`;
-                badge.className = "text-[10px] text-blue-600 font-bold";
             } else {
                 badge.textContent = `該当なし`;
-                badge.className = "text-[10px] text-red-400 font-medium";
             }
         }
 
-        // --- 住所検索機能 (Google Geocoding API) ---
         function searchAddress() {
             const query = document.getElementById('address-search-input').value;
             if (!query) return;
-
-            const btn = document.getElementById('address-search-btn');
-            btn.disabled = true;
-
             geocoder.geocode({ address: query }, (results, status) => {
-                btn.disabled = false;
                 if (status === 'OK') {
                     const pos = results[0].geometry.location;
                     map.setCenter(pos);
-                    map.setZoom(17); // 枝番検索なので少し深めにズーム
-
-                    // 検索結果用の一時的な目印
+                    map.setZoom(17);
                     if (searchResultMarker) searchResultMarker.setMap(null);
                     searchResultMarker = new google.maps.Circle({
                         strokeColor: '#10b981',
-                        strokeOpacity: 0.8,
-                        strokeWeight: 2,
                         fillColor: '#10b981',
                         fillOpacity: 0.35,
                         map: map,
                         center: pos,
                         radius: 30
                     });
-
-                    infoWindow.setContent(`<div style="padding:5px; font-size:12px;">検索位置:<br>${results[0].formatted_address}</div>`);
-                    infoWindow.setPosition(pos);
-                    infoWindow.open(map);
-
                 } else {
-                    alert("場所が見つかりませんでした: " + status);
+                    console.error("Geocode failed: " + status);
                 }
             });
         }
 
-        // リスナー設定
-        document.getElementById('search-input').addEventListener('input', (e) => {
-            renderMarkers(e.target.value);
-        });
-
+        document.getElementById('search-input').addEventListener('input', (e) => renderMarkers(e.target.value));
         document.getElementById('address-search-btn').onclick = searchAddress;
-        document.getElementById('address-search-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') searchAddress();
-        });
+        document.getElementById('address-search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchAddress(); });
 
-        // 実行開始
         loadGoogleMaps();
     </script>
 </body>
