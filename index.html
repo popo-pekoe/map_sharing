@@ -3,49 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>住所録検索マップ</title>
+    <title>住所録検索マップ (Google Maps版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         #map { height: 100vh; width: 100%; z-index: 0; }
-        .leaflet-popup-content { font-size: 14px; line-height: 1.6; }
-        .custom-popup .leaflet-popup-content-wrapper { 
-            border-radius: 12px; 
-            padding: 4px; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        }
-        .user-select-text { user-select: text; }
+        /* Google Maps InfoWindowのカスタマイズ用 */
+        .gm-style-iw-d { overflow: auto !important; max-height: none !important; }
+        input::placeholder { font-size: 0.8rem; }
     </style>
 </head>
 <body class="bg-gray-50 font-sans text-gray-900 overflow-hidden">
 
     <!-- ヘッダー -->
-    <header class="absolute top-4 left-4 right-4 h-16 bg-white/95 backdrop-blur shadow-xl rounded-2xl flex items-center justify-between px-6 z-[1000] border border-white/20">
-        <div class="flex items-center gap-3 shrink-0">
-            <div class="bg-indigo-600 p-2 rounded-xl shadow-inner">
+    <header class="absolute top-4 left-4 right-4 h-auto md:h-16 bg-white/95 backdrop-blur shadow-xl rounded-2xl flex flex-col md:flex-row items-center justify-between px-6 py-3 md:py-0 gap-3 z-[1000] border border-white/20">
+        <div class="flex items-center gap-3 shrink-0 w-full md:w-auto">
+            <div class="bg-blue-600 p-2 rounded-xl shadow-inner">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 </svg>
             </div>
-            <div class="hidden sm:block">
-                <h1 class="text-sm font-bold text-gray-800 tracking-tight">地点検索マップ</h1>
+            <div>
+                <h1 class="text-sm font-bold text-gray-800 tracking-tight">Google Maps 検索マップ</h1>
                 <div id="status-badge" class="text-[10px] text-gray-400 font-medium">読込中...</div>
             </div>
         </div>
         
-        <!-- 検索バー -->
-        <div class="flex-1 max-w-md ml-4">
-            <div class="relative">
-                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
+        <!-- 検索バーグループ -->
+        <div class="flex flex-col sm:flex-row gap-2 w-full max-w-2xl">
+            <!-- 1. リスト絞り込み -->
+            <div class="relative flex-1">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-500">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 8.293A1 1 0 013 7.586V4z" />
                     </svg>
                 </span>
-                <input type="text" id="search-input" placeholder="キーワードで絞り込み..." 
-                    class="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                <input type="text" id="search-input" placeholder="リストから絞り込み..." 
+                    class="w-full pl-9 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 >
+            </div>
+
+            <!-- 2. 地図住所検索 -->
+            <div class="relative flex-1 flex gap-1">
+                <div class="relative flex-1">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-emerald-500">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </span>
+                    <input type="text" id="address-search-input" placeholder="住所・枝番を検索..." 
+                        class="w-full pl-9 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 transition-all outline-none"
+                    >
+                </div>
+                <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-colors">
+                    移動
+                </button>
             </div>
         </div>
     </header>
@@ -56,7 +68,7 @@
         <!-- エラー通知 -->
         <div id="error-msg" class="hidden absolute top-24 left-1/2 -translate-x-1/2 z-[1000] bg-white text-red-600 px-6 py-3 rounded-xl shadow-xl border border-red-100 text-xs text-center">
             <p class="font-bold">データの取得に失敗しました</p>
-            <p class="text-[10px] text-gray-500 mt-1">スプレッドシートの公開設定を確認してください。</p>
+            <p class="text-[10px] text-gray-500 mt-1">APIキーまたはスプレッドシート設定を確認してください。</p>
         </div>
     </main>
 
@@ -64,22 +76,46 @@
         /**
          * --- 設定エリア ---
          */
+        const GOOGLE_MAPS_API_KEY = "ここにAPIキーを貼り付けてください";
         const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=1895756622&single=true&output=csv';
 
         let map;
-        let markersLayer = L.layerGroup();
+        let geocoder;
+        let infoWindow;
+        let markers = [];
         let allData = [];
+        let searchResultMarker = null;
+
+        // Google Mapsスクリプトの動的読み込み
+        function loadGoogleMaps() {
+            if (GOOGLE_MAPS_API_KEY === "AIzaSyDYg1z0rVrz1S3KkKqiHpWBcBzjtNr-eKY") {
+                alert("APIキーが設定されていません。コードの冒頭を確認してください。");
+                return;
+            }
+            const script = document.createElement("script");
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap&libraries=places`;
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+        }
 
         // 地図初期化
-        function initMap() {
-            map = L.map('map', { zoomControl: false, tap: true }).setView([36.2048, 138.2529], 5);
-            L.control.zoom({ position: 'bottomright' }).addTo(map);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
-            markersLayer.addTo(map);
+        window.initMap = function() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 35.6812, lng: 139.7671 },
+                zoom: 12,
+                mapTypeControl: true,
+                streetViewControl: true,
+                fullscreenControl: false,
+                zoomControl: true,
+                zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }
+            });
+
+            geocoder = new google.maps.Geocoder();
+            infoWindow = new google.maps.InfoWindow();
+            
             fetchData();
-        }
+        };
 
         async function fetchData() {
             Papa.parse(SHEET_CSV_URL, {
@@ -89,7 +125,7 @@
                 complete: function(results) {
                     if (results.data && results.data.length > 0) {
                         allData = results.data;
-                        renderMarkers(""); // 初回表示
+                        renderMarkers(""); // 初回プロット
                     } else {
                         showError();
                     }
@@ -100,25 +136,28 @@
 
         function showError() {
             document.getElementById('error-msg').classList.remove('hidden');
-            document.getElementById('status-badge').textContent = '読込エラー';
+            document.getElementById('status-badge').textContent = 'エラー';
         }
 
-        // フィルタリングとマーカー表示
+        // マーカーのレンダリング
         function renderMarkers(keyword) {
-            markersLayer.clearLayers();
+            // 既存のマーカーを削除
+            markers.forEach(m => m.setMap(null));
+            markers = [];
+
             const lowerKeyword = keyword.toLowerCase();
-            
             const keys = Object.keys(allData[0] || {});
+            
             const latKey = keys.find(k => ['緯度', 'lat', 'latitude'].some(kw => k.toLowerCase().includes(kw)));
             const lngKey = keys.find(k => ['経度', 'lng', 'lon', 'longitude'].some(kw => k.toLowerCase().includes(kw)));
             const nameKey = keys.find(k => ['名', 'name', 'タイトル', '拠点'].some(kw => k.toLowerCase().includes(kw)));
 
             if (!latKey || !lngKey) return showError();
 
-            let points = [];
-            
+            const bounds = new google.maps.LatLngBounds();
+            let count = 0;
+
             allData.forEach((row, i) => {
-                // キーワードが含まれているか全列をチェック
                 const isMatch = Object.values(row).some(val => 
                     String(val).toLowerCase().includes(lowerKeyword)
                 );
@@ -129,44 +168,97 @@
                 const lng = parseFloat(row[lngKey]?.replace(/[^\d.-]/g, ''));
 
                 if (!isNaN(lat) && !isNaN(lng)) {
-                    const marker = L.marker([lat, lng]);
-                    
-                    let popupContent = `<div class="user-select-text p-1">`;
-                    popupContent += `<div class="font-bold border-b border-indigo-100 pb-1 mb-2 text-indigo-700 text-base">${row[nameKey] || '地点 '+(i+1)}</div>`;
-                    
+                    const pos = { lat, lng };
+                    const marker = new google.maps.Marker({
+                        position: pos,
+                        map: map,
+                        title: row[nameKey] || '地点'
+                    });
+
+                    // ポップアップ内容
+                    let content = `<div style="padding:10px; min-width:200px;">`;
+                    content += `<div style="font-weight:bold; border-bottom:1px solid #eee; margin-bottom:8px; padding-bottom:4px; color:#2563eb;">${row[nameKey] || '地点 '+(i+1)}</div>`;
                     Object.entries(row).forEach(([k, v]) => {
                         if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
-                            popupContent += `<div class="text-[12px] mb-1 leading-snug text-gray-600"><strong>${k}:</strong> ${v}</div>`;
+                            content += `<div style="font-size:12px; margin-bottom:4px;"><strong>${k}:</strong> ${v}</div>`;
                         }
                     });
-                    popupContent += `</div>`;
+                    content += `</div>`;
 
-                    marker.bindPopup(popupContent, { className: 'custom-popup', maxWidth: 280 });
-                    markersLayer.addLayer(marker);
-                    points.push([lat, lng]);
+                    marker.addListener('click', () => {
+                        infoWindow.setContent(content);
+                        infoWindow.open(map, marker);
+                    });
+
+                    markers.push(marker);
+                    bounds.extend(pos);
+                    count++;
                 }
             });
 
             const badge = document.getElementById('status-badge');
-            if (points.length > 0) {
-                // 検索時はズームを変更しない（ユーザーの操作を優先）が、初回は全体表示
+            if (count > 0) {
                 if (keyword === "") {
-                    map.fitBounds(L.latLngBounds(points), { padding: [70, 70] });
+                    map.fitBounds(bounds);
                 }
-                badge.textContent = `${points.length} 件表示中`;
-                badge.className = "text-[10px] text-indigo-600 font-bold";
+                badge.textContent = `${count} 件表示中`;
+                badge.className = "text-[10px] text-blue-600 font-bold";
             } else {
                 badge.textContent = `該当なし`;
                 badge.className = "text-[10px] text-red-400 font-medium";
             }
         }
 
-        // 検索入力のイベントリスナー
+        // --- 住所検索機能 (Google Geocoding API) ---
+        function searchAddress() {
+            const query = document.getElementById('address-search-input').value;
+            if (!query) return;
+
+            const btn = document.getElementById('address-search-btn');
+            btn.disabled = true;
+
+            geocoder.geocode({ address: query }, (results, status) => {
+                btn.disabled = false;
+                if (status === 'OK') {
+                    const pos = results[0].geometry.location;
+                    map.setCenter(pos);
+                    map.setZoom(17); // 枝番検索なので少し深めにズーム
+
+                    // 検索結果用の一時的な目印
+                    if (searchResultMarker) searchResultMarker.setMap(null);
+                    searchResultMarker = new google.maps.Circle({
+                        strokeColor: '#10b981',
+                        strokeOpacity: 0.8,
+                        strokeWeight: 2,
+                        fillColor: '#10b981',
+                        fillOpacity: 0.35,
+                        map: map,
+                        center: pos,
+                        radius: 30
+                    });
+
+                    infoWindow.setContent(`<div style="padding:5px; font-size:12px;">検索位置:<br>${results[0].formatted_address}</div>`);
+                    infoWindow.setPosition(pos);
+                    infoWindow.open(map);
+
+                } else {
+                    alert("場所が見つかりませんでした: " + status);
+                }
+            });
+        }
+
+        // リスナー設定
         document.getElementById('search-input').addEventListener('input', (e) => {
             renderMarkers(e.target.value);
         });
 
-        window.onload = initMap;
+        document.getElementById('address-search-btn').onclick = searchAddress;
+        document.getElementById('address-search-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') searchAddress();
+        });
+
+        // 実行開始
+        loadGoogleMaps();
     </script>
 </body>
 </html>
