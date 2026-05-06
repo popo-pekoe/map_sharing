@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>住所録検索マップ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map { height: 100vh; width: 100%; z-index: 0; }
+        .leaflet-popup-content { font-size: 14px; line-height: 1.6; }
+        .custom-popup .leaflet-popup-content-wrapper { 
+            border-radius: 12px; 
+            padding: 4px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .user-select-text { user-select: text; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-900 overflow-hidden">
+
+    <!-- ヘッダー -->
+    <header class="absolute top-4 left-4 right-4 h-16 bg-white/95 backdrop-blur shadow-xl rounded-2xl flex items-center justify-between px-6 z-[1000] border border-white/20">
+        <div class="flex items-center gap-3 shrink-0">
+            <div class="bg-indigo-600 p-2 rounded-xl shadow-inner">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                </svg>
+            </div>
+            <div class="hidden sm:block">
+                <h1 class="text-sm font-bold text-gray-800 tracking-tight">地点検索マップ</h1>
+                <div id="status-badge" class="text-[10px] text-gray-400 font-medium">読込中...</div>
+            </div>
+        </div>
+        
+        <!-- 検索バー -->
+        <div class="flex-1 max-w-md ml-4">
+            <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </span>
+                <input type="text" id="search-input" placeholder="キーワードで絞り込み..." 
+                    class="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                >
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div id="map"></div>
+        
+        <!-- エラー通知 -->
+        <div id="error-msg" class="hidden absolute top-24 left-1/2 -translate-x-1/2 z-[1000] bg-white text-red-600 px-6 py-3 rounded-xl shadow-xl border border-red-100 text-xs text-center">
+            <p class="font-bold">データの取得に失敗しました</p>
+            <p class="text-[10px] text-gray-500 mt-1">スプレッドシートの公開設定を確認してください。</p>
+        </div>
+    </main>
+
+    <script>
+        /**
+         * --- 設定エリア ---
+         */
+        const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=1895756622&single=true&output=csv';
+
+        let map;
+        let markersLayer = L.layerGroup();
+        let allData = [];
+
+        // 地図初期化
+        function initMap() {
+            map = L.map('map', { zoomControl: false, tap: true }).setView([36.2048, 138.2529], 5);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            markersLayer.addTo(map);
+            fetchData();
+        }
+
+        async function fetchData() {
+            Papa.parse(SHEET_CSV_URL, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if (results.data && results.data.length > 0) {
+                        allData = results.data;
+                        renderMarkers(""); // 初回表示
+                    } else {
+                        showError();
+                    }
+                },
+                error: () => showError()
+            });
+        }
+
+        function showError() {
+            document.getElementById('error-msg').classList.remove('hidden');
+            document.getElementById('status-badge').textContent = '読込エラー';
+        }
+
+        // フィルタリングとマーカー表示
+        function renderMarkers(keyword) {
+            markersLayer.clearLayers();
+            const lowerKeyword = keyword.toLowerCase();
+            
+            const keys = Object.keys(allData[0] || {});
+            const latKey = keys.find(k => ['緯度', 'lat', 'latitude'].some(kw => k.toLowerCase().includes(kw)));
+            const lngKey = keys.find(k => ['経度', 'lng', 'lon', 'longitude'].some(kw => k.toLowerCase().includes(kw)));
+            const nameKey = keys.find(k => ['名', 'name', 'タイトル', '拠点'].some(kw => k.toLowerCase().includes(kw)));
+
+            if (!latKey || !lngKey) return showError();
+
+            let points = [];
+            
+            allData.forEach((row, i) => {
+                // キーワードが含まれているか全列をチェック
+                const isMatch = Object.values(row).some(val => 
+                    String(val).toLowerCase().includes(lowerKeyword)
+                );
+
+                if (!isMatch) return;
+
+                const lat = parseFloat(row[latKey]?.replace(/[^\d.-]/g, ''));
+                const lng = parseFloat(row[lngKey]?.replace(/[^\d.-]/g, ''));
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    const marker = L.marker([lat, lng]);
+                    
+                    let popupContent = `<div class="user-select-text p-1">`;
+                    popupContent += `<div class="font-bold border-b border-indigo-100 pb-1 mb-2 text-indigo-700 text-base">${row[nameKey] || '地点 '+(i+1)}</div>`;
+                    
+                    Object.entries(row).forEach(([k, v]) => {
+                        if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
+                            popupContent += `<div class="text-[12px] mb-1 leading-snug text-gray-600"><strong>${k}:</strong> ${v}</div>`;
+                        }
+                    });
+                    popupContent += `</div>`;
+
+                    marker.bindPopup(popupContent, { className: 'custom-popup', maxWidth: 280 });
+                    markersLayer.addLayer(marker);
+                    points.push([lat, lng]);
+                }
+            });
+
+            const badge = document.getElementById('status-badge');
+            if (points.length > 0) {
+                // 検索時はズームを変更しない（ユーザーの操作を優先）が、初回は全体表示
+                if (keyword === "") {
+                    map.fitBounds(L.latLngBounds(points), { padding: [70, 70] });
+                }
+                badge.textContent = `${points.length} 件表示中`;
+                badge.className = "text-[10px] text-indigo-600 font-bold";
+            } else {
+                badge.textContent = `該当なし`;
+                badge.className = "text-[10px] text-red-400 font-medium";
+            }
+        }
+
+        // 検索入力のイベントリスナー
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            renderMarkers(e.target.value);
+        });
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
