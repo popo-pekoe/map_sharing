@@ -11,11 +11,30 @@
         
         /* ポップアップ内の表示設定 */
         .info-window-container {
-            padding: 8px;
+            padding: 4px;
+            min-width: 280px;
             max-width: 320px;
-            max-height: 400px;
+            max-height: 450px;
             overflow-y: auto;
             font-family: sans-serif;
+            position: relative;
+        }
+
+        .info-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #3b82f6;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            padding-right: 24px; /* ボタン用のスペース */
+        }
+
+        .info-title {
+            font-weight: bold;
+            font-size: 16px;
+            color: #1e40af;
+            line-height: 1.4;
         }
 
         .info-content-value {
@@ -24,15 +43,68 @@
             color: #374151;
             font-size: 13px;
             line-height: 1.6;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
 
         .info-label {
             font-size: 11px;
             font-weight: bold;
-            color: #6b7280;
+            color: #9ca3af;
             display: block;
-            margin-top: 8px;
+            margin-top: 6px;
+        }
+
+        /* 修正ボタン */
+        .correction-trigger {
+            position: absolute;
+            top: 0;
+            right: 0;
+            color: #9ca3af;
+            padding: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .correction-trigger:hover {
+            color: #ef4444;
+        }
+
+        /* フォームのスタイル */
+        .correction-form {
+            display: none;
+            margin-top: 10px;
+            padding: 12px;
+            background: #fef2f2;
+            border-radius: 12px;
+            border: 1px solid #fee2e2;
+        }
+        .correction-textarea {
+            width: 100%;
+            height: 80px;
+            font-size: 13px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #fca5a5;
+            margin-bottom: 10px;
+            outline: none;
+            background: white;
+        }
+        .correction-submit-btn {
+            width: 100%;
+            background: #ef4444;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 8px;
+            border-radius: 8px;
+            transition: opacity 0.2s;
+        }
+        .correction-submit-btn:hover {
+            opacity: 0.8;
+        }
+        .correction-submit-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
         }
 
         input::placeholder { font-size: 0.8rem; }
@@ -54,7 +126,6 @@
             </div>
         </div>
         
-        <!-- 検索バー -->
         <div class="flex flex-col sm:flex-row gap-2 w-full max-w-2xl">
             <div class="relative flex-1">
                 <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-500">
@@ -62,11 +133,10 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 8.293A1 1 0 013 7.586V4z" />
                     </svg>
                 </span>
-                <input type="text" id="search-input" placeholder="キーワードで絞り込み..." 
+                <input type="text" id="search-input" placeholder="キーワード絞り込み..." 
                     class="w-full pl-9 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 >
             </div>
-
             <div class="relative flex-1 flex gap-1">
                 <div class="relative flex-1">
                     <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-emerald-500">
@@ -78,18 +148,12 @@
                         class="w-full pl-9 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 transition-all outline-none"
                     >
                 </div>
-                <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-colors">移動</button>
+                <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-colors text-nowrap">移動</button>
             </div>
         </div>
     </header>
 
-    <main>
-        <div id="map"></div>
-        <div id="error-msg" class="hidden absolute top-24 left-1/2 -translate-x-1/2 z-[1000] bg-white text-red-600 px-6 py-3 rounded-xl shadow-xl border border-red-100 text-xs text-center">
-            <p class="font-bold">データ取得エラー</p>
-            <p class="text-[10px] text-gray-500 mt-1">スプレッドシートの公開設定を確認してください。</p>
-        </div>
-    </main>
+    <main><div id="map"></div></main>
 
     <script>
         /**
@@ -97,13 +161,15 @@
          */
         const GOOGLE_MAPS_API_KEY = "AIzaSyDYg1z0rVrz1S3KkKqiHpWBcBzjtNr-eKY"; 
         const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=1895756622&single=true&output=csv';
+        
+        // 修正依頼を受け取るGoogle Apps Script (GAS) のURL
+        // 手順に従って作成したURLをここに貼り付けてください
+        const CORRECTION_GAS_URL = "https://script.google.com/macros/s/AKfycbza6D9o3nwIpQbzZRx3BXFwJnpkBO8R3OH9nmTtszExj1EvShdXyiXj1tQcx169hGiaPQ/exec"; 
 
         let map, geocoder, infoWindow;
         let markers = [];
         let allData = [];
-        let searchResultMarker = null;
 
-        // Google Mapsスクリプトの読み込み
         function loadGoogleMaps() {
             const script = document.createElement("script");
             script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap`;
@@ -118,7 +184,6 @@
                 zoom: 12,
                 mapTypeControl: true,
                 streetViewControl: true,
-                fullscreenControl: false,
                 zoomControl: true,
                 zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }
             });
@@ -132,111 +197,149 @@
                 download: true,
                 header: true,
                 skipEmptyLines: true,
-                complete: function(results) {
-                    if (results.data && results.data.length > 0) {
-                        allData = results.data;
-                        renderMarkers("");
-                    } else {
-                        showError();
-                    }
-                },
-                error: () => showError()
+                complete: (results) => {
+                    allData = results.data;
+                    renderMarkers("");
+                }
             });
-        }
-
-        function showError() {
-            document.getElementById('error-msg').classList.remove('hidden');
-            document.getElementById('status-badge').textContent = 'エラー';
         }
 
         function renderMarkers(keyword) {
             markers.forEach(m => m.setMap(null));
             markers = [];
-
             const lowerKeyword = keyword.toLowerCase();
             const keys = Object.keys(allData[0] || {});
             const latKey = keys.find(k => ['緯度', 'lat'].some(kw => k.toLowerCase().includes(kw)));
             const lngKey = keys.find(k => ['経度', 'lng'].some(kw => k.toLowerCase().includes(kw)));
             const nameKey = keys.find(k => ['名', 'name', 'タイトル'].some(kw => k.toLowerCase().includes(kw)));
 
-            if (!latKey || !lngKey) return;
-
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
 
             allData.forEach((row, i) => {
-                const isMatch = Object.values(row).some(val => String(val).toLowerCase().includes(lowerKeyword));
-                if (!isMatch) return;
+                if (!Object.values(row).some(v => String(v).toLowerCase().includes(lowerKeyword))) return;
 
                 const lat = parseFloat(row[latKey]?.replace(/[^\d.-]/g, ''));
                 const lng = parseFloat(row[lngKey]?.replace(/[^\d.-]/g, ''));
 
                 if (!isNaN(lat) && !isNaN(lng)) {
                     const pos = { lat, lng };
-                    const marker = new google.maps.Marker({
-                        position: pos,
-                        map: map,
-                        title: row[nameKey] || '地点'
-                    });
+                    const marker = new google.maps.Marker({ position: pos, map: map });
+                    const safeName = (row[nameKey] || `地点 ${i+1}`).replace(/'/g, "\\'");
 
-                    let content = `<div class="info-window-container">`;
-                    content += `<div style="font-weight:bold; font-size:16px; border-bottom:2px solid #3b82f6; margin-bottom:12px; padding-bottom:6px; color:#1e40af;">${row[nameKey] || '地点 '+(i+1)}</div>`;
-                    
-                    Object.entries(row).forEach(([k, v]) => {
-                        if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
-                            content += `<span class="info-label">${k}</span>`;
-                            content += `<div class="info-content-value">${v}</div>`;
-                        }
-                    });
-                    content += `</div>`;
+                    let content = `
+                        <div class="info-window-container" id="iw-${i}">
+                            <div class="correction-trigger" title="修正依頼" onclick="toggleCorrectionForm('iw-${i}')">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                            </div>
+                            <div class="info-header">
+                                <div class="info-title">${row[nameKey] || '地点 '+(i+1)}</div>
+                            </div>
+                            <div class="info-data-area">
+                                ${Object.entries(row).map(([k, v]) => {
+                                    if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
+                                        return `<span class="info-label">${k}</span><div class="info-content-value">${v}</div>`;
+                                    }
+                                    return '';
+                                }).join('')}
+                            </div>
+                            <div class="correction-form">
+                                <p class="text-[11px] font-bold text-red-600 mb-2">修正内容を入力してください</p>
+                                <textarea class="correction-textarea" placeholder="例：住所が間違っています。正しくは〇〇です。"></textarea>
+                                <button class="correction-submit-btn" onclick="submitCorrection('${safeName}', 'iw-${i}')">内容を送信する</button>
+                                <div class="correction-error-msg text-[10px] text-red-500 mt-2 hidden"></div>
+                            </div>
+                        </div>`;
 
                     marker.addListener('click', () => {
                         infoWindow.setContent(content);
                         infoWindow.open(map, marker);
                     });
-
                     markers.push(marker);
                     bounds.extend(pos);
                     count++;
                 }
             });
-
-            const badge = document.getElementById('status-badge');
-            if (count > 0) {
-                if (keyword === "") map.fitBounds(bounds);
-                badge.textContent = `${count} 件表示中`;
-            } else {
-                badge.textContent = `該当なし`;
-            }
+            document.getElementById('status-badge').textContent = `${count} 件表示中`;
+            if (keyword === "" && count > 0) map.fitBounds(bounds);
         }
 
+        window.toggleCorrectionForm = function(id) {
+            const container = document.getElementById(id);
+            const form = container.querySelector('.correction-form');
+            const dataArea = container.querySelector('.info-data-area');
+            const isVisible = form.style.display === 'block';
+            
+            form.style.display = isVisible ? 'none' : 'block';
+            dataArea.style.display = isVisible ? 'block' : 'none';
+        };
+
+        window.submitCorrection = async function(companyName, id) {
+            const container = document.getElementById(id);
+            const textarea = container.querySelector('.correction-textarea');
+            const btn = container.querySelector('.correction-submit-btn');
+            const errorArea = container.querySelector('.correction-error-msg');
+            const comment = textarea.value.trim();
+
+            errorArea.classList.add('hidden');
+
+            if (!comment) {
+                errorArea.textContent = "※修正内容が空欄です。";
+                errorArea.classList.remove('hidden');
+                return;
+            }
+            
+            if (!CORRECTION_GAS_URL || CORRECTION_GAS_URL === "") {
+                errorArea.innerHTML = "※送信先URL(GAS)が未設定です。<br>コード内の CORRECTION_GAS_URL を設定してください。";
+                errorArea.classList.remove('hidden');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = "送信中...";
+
+            try {
+                const url = `${CORRECTION_GAS_URL}?name=${encodeURIComponent(companyName)}&comment=${encodeURIComponent(comment)}`;
+                // mode: 'no-cors' はGASへの送信で一般的ですが、結果の成否は判定できません。
+                // 送信処理自体は実行されます。
+                await fetch(url, { mode: 'no-cors' });
+                
+                container.innerHTML = `
+                    <div class="py-12 px-4 text-center">
+                        <div class="text-green-500 mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <p class="font-bold text-gray-800 text-lg">送信完了</p>
+                        <p class="text-xs text-gray-500 mt-2 leading-relaxed">
+                            ご報告ありがとうございました。<br>管理者が内容を確認いたします。
+                        </p>
+                        <button onclick="infoWindow.close()" class="mt-6 text-xs text-blue-600 font-bold hover:underline">閉じる</button>
+                    </div>`;
+            } catch (e) {
+                errorArea.textContent = "送信エラーが発生しました。接続を確認してください。";
+                errorArea.classList.remove('hidden');
+                btn.disabled = false;
+                btn.innerHTML = "内容を送信する";
+            }
+        };
+
         function searchAddress() {
-            const query = document.getElementById('address-search-input').value;
-            if (!query) return;
-            geocoder.geocode({ address: query }, (results, status) => {
+            const q = document.getElementById('address-search-input').value;
+            if (!q) return;
+            geocoder.geocode({ address: q }, (res, status) => {
                 if (status === 'OK') {
-                    const pos = results[0].geometry.location;
-                    map.setCenter(pos);
+                    map.setCenter(res[0].geometry.location);
                     map.setZoom(17);
-                    if (searchResultMarker) searchResultMarker.setMap(null);
-                    searchResultMarker = new google.maps.Circle({
-                        strokeColor: '#10b981',
-                        fillColor: '#10b981',
-                        fillOpacity: 0.35,
-                        map: map,
-                        center: pos,
-                        radius: 30
-                    });
-                } else {
-                    console.error("Geocode failed: " + status);
                 }
             });
         }
 
         document.getElementById('search-input').addEventListener('input', (e) => renderMarkers(e.target.value));
         document.getElementById('address-search-btn').onclick = searchAddress;
-        document.getElementById('address-search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchAddress(); });
-
         loadGoogleMaps();
     </script>
 </body>
