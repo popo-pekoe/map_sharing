@@ -27,7 +27,7 @@
             border-bottom: 2px solid #3b82f6;
             margin-bottom: 12px;
             padding-bottom: 6px;
-            padding-right: 24px; /* ボタン用のスペース */
+            padding-right: 24px;
         }
 
         .info-title {
@@ -54,7 +54,7 @@
             margin-top: 6px;
         }
 
-        /* 修正ボタン */
+        /* 修正依頼ボタン */
         .correction-trigger {
             position: absolute;
             top: 0;
@@ -97,14 +97,6 @@
             font-weight: bold;
             padding: 8px;
             border-radius: 8px;
-            transition: opacity 0.2s;
-        }
-        .correction-submit-btn:hover {
-            opacity: 0.8;
-        }
-        .correction-submit-btn:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
         }
 
         input::placeholder { font-size: 0.8rem; }
@@ -115,14 +107,15 @@
     <!-- ヘッダー -->
     <header class="absolute top-4 left-4 right-4 h-auto md:h-16 bg-white/95 backdrop-blur shadow-xl rounded-2xl flex flex-col md:flex-row items-center justify-between px-6 py-3 md:py-0 gap-3 z-[1000] border border-white/20">
         <div class="flex items-center gap-3 shrink-0 w-full md:w-auto">
-            <div class="bg-blue-600 p-2 rounded-xl shadow-inner">
+            <!-- ロゴアイコン (機能削除済み) -->
+            <div id="map-logo" class="bg-blue-600 p-2 rounded-xl shadow-inner">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 </svg>
             </div>
             <div class="flex-1">
-                <h1 class="text-sm font-bold text-gray-800 tracking-tight">拠点マップ</h1>
-                <div id="status-badge" class="text-[10px] text-gray-400 font-medium">読込中...</div>
+                <h1 id="header-title" class="text-sm font-bold text-gray-800 tracking-tight">拠点マップ</h1>
+                <div id="status-badge" class="text-[10px] text-gray-400 font-medium italic">読込中...</div>
             </div>
         </div>
         
@@ -160,15 +153,17 @@
          * --- 設定エリア ---
          */
         const GOOGLE_MAPS_API_KEY = "AIzaSyDYg1z0rVrz1S3KkKqiHpWBcBzjtNr-eKY"; 
-        const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=1895756622&single=true&output=csv';
         
-        // 修正依頼を受け取るGoogle Apps Script (GAS) のURL
-        // 手順に従って作成したURLをここに貼り付けてください
+        // CSV URL
+        const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=2020407894&single=true&output=csv';
+        const VIP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=548100284&single=true&output=csv';
+
         const CORRECTION_GAS_URL = "https://script.google.com/macros/s/AKfycbza6D9o3nwIpQbzZRx3BXFwJnpkBO8R3OH9nmTtszExj1EvShdXyiXj1tQcx169hGiaPQ/exec"; 
 
         let map, geocoder, infoWindow;
         let markers = [];
         let allData = [];
+        let currentUrl = PUBLIC_CSV_URL;
 
         function loadGoogleMaps() {
             const script = document.createElement("script");
@@ -189,11 +184,26 @@
             });
             geocoder = new google.maps.Geocoder();
             infoWindow = new google.maps.InfoWindow();
-            fetchData();
+
+            // URLパラメータをチェックしてモードを判定
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('mode') === 'vip') {
+                enableVipMode();
+            } else {
+                fetchData(PUBLIC_CSV_URL);
+            }
         };
 
-        async function fetchData() {
-            Papa.parse(SHEET_CSV_URL, {
+        // VIPモードを有効化する
+        function enableVipMode() {
+            currentUrl = VIP_CSV_URL;
+            document.getElementById('header-title').textContent = "管理者用マップ ★";
+            fetchData(VIP_CSV_URL);
+        }
+
+        async function fetchData(url) {
+            document.getElementById('status-badge').textContent = "データ読込中...";
+            Papa.parse(url, {
                 download: true,
                 header: true,
                 skipEmptyLines: true,
@@ -208,10 +218,13 @@
             markers.forEach(m => m.setMap(null));
             markers = [];
             const lowerKeyword = keyword.toLowerCase();
-            const keys = Object.keys(allData[0] || {});
+            
+            if (allData.length === 0) return;
+            
+            const keys = Object.keys(allData[0]);
             const latKey = keys.find(k => ['緯度', 'lat'].some(kw => k.toLowerCase().includes(kw)));
             const lngKey = keys.find(k => ['経度', 'lng'].some(kw => k.toLowerCase().includes(kw)));
-            const nameKey = keys.find(k => ['名', 'name', 'タイトル'].some(kw => k.toLowerCase().includes(kw)));
+            const nameKey = keys.find(k => ['名', 'name', 'タイトル', '会社名'].some(kw => k.toLowerCase().includes(kw)));
 
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
@@ -224,7 +237,13 @@
 
                 if (!isNaN(lat) && !isNaN(lng)) {
                     const pos = { lat, lng };
-                    const marker = new google.maps.Marker({ position: pos, map: map });
+                    
+                    const marker = new google.maps.Marker({ 
+                        position: pos, 
+                        map: map,
+                        icon: currentUrl === VIP_CSV_URL ? "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" : null
+                    });
+                    
                     const safeName = (row[nameKey] || `地点 ${i+1}`).replace(/'/g, "\\'");
 
                     let content = `
@@ -262,7 +281,12 @@
                     count++;
                 }
             });
-            document.getElementById('status-badge').textContent = `${count} 件表示中`;
+
+            const badge = document.getElementById('status-badge');
+            const isVIP = currentUrl === VIP_CSV_URL;
+            badge.textContent = isVIP ? `★ VIPモード: ${count}件` : `${count}件表示中`;
+            badge.className = isVIP ? "text-[10px] text-blue-600 font-bold" : "text-[10px] text-gray-400 font-medium";
+            
             if (keyword === "" && count > 0) map.fitBounds(bounds);
         }
 
@@ -271,7 +295,6 @@
             const form = container.querySelector('.correction-form');
             const dataArea = container.querySelector('.info-data-area');
             const isVisible = form.style.display === 'block';
-            
             form.style.display = isVisible ? 'none' : 'block';
             dataArea.style.display = isVisible ? 'block' : 'none';
         };
@@ -283,47 +306,16 @@
             const errorArea = container.querySelector('.correction-error-msg');
             const comment = textarea.value.trim();
 
-            errorArea.classList.add('hidden');
-
-            if (!comment) {
-                errorArea.textContent = "※修正内容が空欄です。";
-                errorArea.classList.remove('hidden');
-                return;
-            }
-            
-            if (!CORRECTION_GAS_URL || CORRECTION_GAS_URL === "") {
-                errorArea.innerHTML = "※送信先URL(GAS)が未設定です。<br>コード内の CORRECTION_GAS_URL を設定してください。";
-                errorArea.classList.remove('hidden');
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerHTML = "送信中...";
+            if (!comment) { errorArea.textContent = "※内容を入力してください。"; errorArea.classList.remove('hidden'); return; }
+            btn.disabled = true; btn.innerHTML = "送信中...";
 
             try {
                 const url = `${CORRECTION_GAS_URL}?name=${encodeURIComponent(companyName)}&comment=${encodeURIComponent(comment)}`;
-                // mode: 'no-cors' はGASへの送信で一般的ですが、結果の成否は判定できません。
-                // 送信処理自体は実行されます。
                 await fetch(url, { mode: 'no-cors' });
-                
-                container.innerHTML = `
-                    <div class="py-12 px-4 text-center">
-                        <div class="text-green-500 mb-4">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </div>
-                        <p class="font-bold text-gray-800 text-lg">送信完了</p>
-                        <p class="text-xs text-gray-500 mt-2 leading-relaxed">
-                            ご報告ありがとうございました。<br>管理者が内容を確認いたします。
-                        </p>
-                        <button onclick="infoWindow.close()" class="mt-6 text-xs text-blue-600 font-bold hover:underline">閉じる</button>
-                    </div>`;
+                container.innerHTML = `<div class="py-12 text-center text-green-600 font-bold text-base">送信完了</div>`;
             } catch (e) {
-                errorArea.textContent = "送信エラーが発生しました。接続を確認してください。";
-                errorArea.classList.remove('hidden');
-                btn.disabled = false;
-                btn.innerHTML = "内容を送信する";
+                errorArea.textContent = "送信エラー。"; errorArea.classList.remove('hidden');
+                btn.disabled = false; btn.innerHTML = "内容を送信する";
             }
         };
 
@@ -340,6 +332,8 @@
 
         document.getElementById('search-input').addEventListener('input', (e) => renderMarkers(e.target.value));
         document.getElementById('address-search-btn').onclick = searchAddress;
+        document.getElementById('address-search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchAddress(); });
+
         loadGoogleMaps();
     </script>
 </body>
