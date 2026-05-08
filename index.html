@@ -116,6 +116,19 @@
         .search-area-transition {
             transition: opacity 0.2s ease-in-out;
         }
+
+        /* マーカーラベルのスタイル調整 */
+        .gm-style .marker-label {
+            background-color: white;
+            color: #1e40af;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #3b82f6;
+            white-space: nowrap;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
     </style>
 </head>
 <body class="bg-gray-50 font-sans text-gray-900 overflow-hidden">
@@ -301,13 +314,20 @@
 
                 if (!isNaN(lat) && !isNaN(lng)) {
                     const pos = { lat, lng };
+                    const companyName = row[nameKey] || `地点 ${i+1}`;
+
                     const marker = new google.maps.Marker({ 
                         position: pos, 
                         map: map,
-                        icon: currentUrl === VIP_CSV_URL ? "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" : null
+                        icon: currentUrl === VIP_CSV_URL ? "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" : null,
+                        label: {
+                            text: companyName,
+                            className: 'marker-label', // CSSクラスでスタイルを当てる
+                            anchor: new google.maps.Point(companyName.length * 3.5, -10) // ラベルの位置調整 (x, y)
+                        }
                     });
                     
-                    const safeName = (row[nameKey] || `地点 ${i+1}`).replace(/'/g, "\\'");
+                    const safeName = companyName.replace(/'/g, "\\'");
 
                     let content = `
                         <div class="info-window-container" id="iw-${i}">
@@ -317,7 +337,7 @@
                                 </svg>
                             </div>
                             <div class="info-header">
-                                <div class="info-title">${row[nameKey] || '地点 '+(i+1)}</div>
+                                <div class="info-title">${companyName}</div>
                             </div>
                             <div class="info-data-area">
                                 ${Object.entries(row).map(([k, v]) => {
