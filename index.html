@@ -11,6 +11,7 @@
     <style>
         #map { height: 100vh; width: 100%; z-index: 0; }
         
+        /* ポップアップ内の表示設定 */
         .info-window-container {
             padding: 4px;
             min-width: 280px;
@@ -55,6 +56,7 @@
             margin-top: 6px;
         }
 
+        /* 修正依頼ボタン（右上） */
         .correction-trigger {
             position: absolute;
             top: 0;
@@ -69,6 +71,7 @@
             color: #ef4444;
         }
 
+        /* フォームのスタイル */
         .correction-form {
             display: none;
             margin-top: 10px;
@@ -100,6 +103,7 @@
 
         input::placeholder { font-size: 0.8rem; }
 
+        /* コンパクトなヘッダー */
         #main-header {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             max-width: 90vw;
@@ -111,10 +115,8 @@
             width: 100%;
             max-width: 680px !important;
         }
-        .search-area-transition {
-            transition: opacity 0.2s ease-in-out;
-        }
 
+        /* マーカーラベルのスタイル調整 */
         .gm-style .marker-label {
             background-color: white;
             color: #1e40af;
@@ -146,16 +148,16 @@
             </div>
 
             <div id="collapsed-icons" class="flex items-center gap-1.5 px-2 text-gray-400 border-l border-gray-100 ml-1">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="絞り込み">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 8.293A1 1 0 013 7.586V4z" />
                 </svg>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="住所検索">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
             </div>
         </div>
         
-        <div id="search-area" class="hidden opacity-0 flex flex-col md:flex-row gap-2 w-full px-2 pb-2 md:pb-0 md:pr-2 search-area-transition">
+        <div id="search-area" class="hidden opacity-0 flex flex-col md:flex-row gap-2 w-full px-2 pb-2 md:pb-0 md:pr-2 transition-opacity duration-200">
             <div class="relative flex-1">
                 <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-500">
                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -179,6 +181,7 @@
                 </div>
                 <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors text-nowrap shadow-sm">移動</button>
             </div>
+            <!-- 閉じるボタン -->
             <button id="collapse-btn" class="hidden md:block text-gray-300 hover:text-gray-600 p-1 shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -190,11 +193,14 @@
     <main><div id="map"></div></main>
 
     <script>
+        /**
+         * --- 設定エリア ---
+         */
         const GOOGLE_MAPS_API_KEY = "AIzaSyDYg1z0rVrz1S3KkKqiHpWBcBzjtNr-eKY"; 
         
+        // CSV URL（一般用とVIP用）
         const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=2020407894&single=true&output=csv';
         const VIP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=548100284&single=true&output=csv';
-
         const CORRECTION_GAS_URL = "https://script.google.com/macros/s/AKfycbza6D9o3nwIpQbzZRx3BXFwJnpkBO8R3OH9nmTtszExj1EvShdXyiXj1tQcx169hGiaPQ/exec"; 
 
         let map, geocoder, infoWindow, oms;
@@ -202,7 +208,7 @@
         let allData = [];
         let currentUrl = PUBLIC_CSV_URL;
         let isExpanded = false;
-        let isViewRestored = false; // 初回の位置復元が行われたか
+        let isViewRestored = false;
 
         function loadGoogleMaps() {
             const script = document.createElement("script");
@@ -213,7 +219,7 @@
         }
 
         window.initMap = function() {
-            // 保存された位置情報を取得
+            // ローカルストレージから前回表示していた場所を復元
             const savedView = localStorage.getItem('map_last_view');
             let initialCenter = { lat: 35.6812, lng: 139.7671 };
             let initialZoom = 12;
@@ -224,7 +230,7 @@
                     initialCenter = view.center;
                     initialZoom = view.zoom;
                     isViewRestored = true;
-                } catch (e) { console.error("Saved view parsing error", e); }
+                } catch (e) { console.error("Restore Error", e); }
             }
 
             map = new google.maps.Map(document.getElementById('map'), {
@@ -240,6 +246,7 @@
             geocoder = new google.maps.Geocoder();
             infoWindow = new google.maps.InfoWindow();
 
+            // 重なり対策 OMSの初期化
             oms = new OverlappingMarkerSpiderfier(map, {
                 markersWontMove: true,
                 markersWontHide: true,
@@ -247,28 +254,47 @@
                 keepSpiderfied: true
             });
 
-            // 地図クリックで閉じる
-            map.addListener('click', () => {
-                if (infoWindow) infoWindow.close();
-            });
+            // 地図の空きスペースクリックで吹き出しを閉じる
+            map.addListener('click', () => { if (infoWindow) infoWindow.close(); });
 
-            // --- 位置情報の自動保存 ---
+            // 地図移動・ズーム停止時の処理（位置保存 & ラベル表示判定）
             map.addListener('idle', () => {
+                const bounds = map.getBounds();
+                if (!bounds) return;
+
+                // 現在の位置を保存
                 const viewState = {
-                    center: {
-                        lat: map.getCenter().lat(),
-                        lng: map.getCenter().lng()
-                    },
+                    center: { lat: map.getCenter().lat(), lng: map.getCenter().lng() },
                     zoom: map.getZoom()
                 };
                 localStorage.setItem('map_last_view', JSON.stringify(viewState));
+
+                // 画面内のピン数をカウントしてラベルの表示/非表示を切り替え
+                let visibleMarkers = markers.filter(m => bounds.contains(m.getPosition()));
+                const shouldShowLabels = visibleMarkers.length <= 20;
+
+                markers.forEach(m => {
+                    if (shouldShowLabels) {
+                        if (!m.getLabel()) {
+                            m.setLabel({
+                                text: m.fullLabel,
+                                className: 'marker-label',
+                                anchor: new google.maps.Point(m.fullLabel.length * 3.5, -10)
+                            });
+                        }
+                    } else {
+                        m.setLabel(null);
+                    }
+                });
             });
 
+            // OMS経由でクリックイベントをハンドル
             oms.addListener('click', function(marker) {
                 infoWindow.setContent(marker.desc);
                 infoWindow.open(map, marker);
             });
 
+            // URLパラメータ ?mode=vip の判定
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('mode') === 'vip') {
                 enableVipMode();
@@ -279,6 +305,7 @@
             setupHeaderToggle();
         };
 
+        // ヘッダー開閉の設定
         function setupHeaderToggle() {
             const header = document.getElementById('main-header');
             const toggleArea = document.getElementById('header-toggle');
@@ -304,7 +331,6 @@
                     }, 100);
                 }
             }
-
             toggleArea.onclick = () => { if (!isExpanded) toggle(); };
             if (collapseBtn) { collapseBtn.onclick = (e) => { e.stopPropagation(); toggle(); }; }
         }
@@ -345,6 +371,7 @@
             let count = 0;
 
             allData.forEach((row, i) => {
+                // キーワード絞り込み
                 if (!Object.values(row).some(v => String(v).toLowerCase().includes(lowerKeyword))) return;
 
                 const lat = parseFloat(row[latKey]?.replace(/[^\d.-]/g, ''));
@@ -357,16 +384,14 @@
                     const marker = new google.maps.Marker({ 
                         position: pos, 
                         map: map,
-                        icon: currentUrl === VIP_CSV_URL ? "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" : null,
-                        label: {
-                            text: companyName,
-                            className: 'marker-label',
-                            anchor: new google.maps.Point(companyName.length * 3.5, -10)
-                        }
+                        icon: currentUrl === VIP_CSV_URL ? "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" : null
+                        // ラベルは idle イベントにて動的に制御される
                     });
                     
+                    // 元の社名を保持
+                    marker.fullLabel = companyName;
+                    
                     const safeName = companyName.replace(/'/g, "\\'");
-
                     let content = `
                         <div class="info-window-container" id="iw-${i}">
                             <div class="correction-trigger" title="修正依頼" onclick="toggleCorrectionForm('iw-${i}')">
@@ -374,9 +399,7 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                             </div>
-                            <div class="info-header">
-                                <div class="info-title">${companyName}</div>
-                            </div>
+                            <div class="info-header"><div class="info-title">${companyName}</div></div>
                             <div class="info-data-area">
                                 ${Object.entries(row).map(([k, v]) => {
                                     if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
@@ -394,7 +417,7 @@
                         </div>`;
 
                     marker.desc = content;
-                    oms.addMarker(marker);
+                    oms.addMarker(marker); // 重なり対策ライブラリに追加
                     markers.push(marker);
                     bounds.extend(pos);
                     count++;
@@ -406,10 +429,13 @@
             badge.textContent = isVIP ? `★ VIP: ${count}件` : `${count}件表示中`;
             badge.className = isVIP ? "text-[9px] text-blue-600 font-bold" : "text-[9px] text-gray-400 font-medium";
             
-            // 初回のデータ読み込み時、保存された位置情報がなければ全件表示に合わせる
+            // 初回表示時かつ位置復元がない場合のみ、全件収まるように調整
             if (!isViewRestored && keyword === "" && count > 0) {
                 map.fitBounds(bounds);
             }
+            
+            // 初期状態のラベル判定を走らせる
+            google.maps.event.trigger(map, 'idle');
         }
 
         window.toggleCorrectionForm = function(id) {
@@ -427,14 +453,12 @@
             const btn = container.querySelector('.correction-submit-btn');
             const errorArea = container.querySelector('.correction-error-msg');
             const comment = textarea.value.trim();
-
             if (!comment) { errorArea.textContent = "※入力してください。"; errorArea.classList.remove('hidden'); return; }
             btn.disabled = true; btn.innerHTML = "...";
-
             try {
                 const url = `${CORRECTION_GAS_URL}?name=${encodeURIComponent(companyName)}&comment=${encodeURIComponent(comment)}`;
                 await fetch(url, { mode: 'no-cors' });
-                container.innerHTML = `<div class="py-10 text-center text-green-600 font-bold">送信完了</div>`;
+                container.innerHTML = `<div class="py-10 text-center text-green-600 font-bold text-sm">送信完了</div>`;
             } catch (e) {
                 errorArea.textContent = "失敗。"; errorArea.classList.remove('hidden');
                 btn.disabled = false; btn.innerHTML = "送信する";
