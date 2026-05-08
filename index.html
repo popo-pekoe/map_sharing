@@ -271,7 +271,7 @@
 
                 // 画面内のピン数をカウントしてラベルの表示/非表示を切り替え
                 let visibleMarkers = markers.filter(m => bounds.contains(m.getPosition()));
-                const shouldShowLabels = visibleMarkers.length <= 20;
+                const shouldShowLabels = visibleMarkers.length <= 30;
 
                 markers.forEach(m => {
                     if (shouldShowLabels) {
