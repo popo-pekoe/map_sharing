@@ -182,6 +182,7 @@
                 </div>
                 <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors text-nowrap shadow-sm">移動</button>
             </div>
+            <!-- 閉じるボタン -->
             <button id="collapse-btn" class="hidden md:block text-gray-300 hover:text-gray-600 p-1 shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -208,11 +209,11 @@
         let currentUrl = PUBLIC_CSV_URL;
         let isExpanded = false;
         let isViewRestored = false;
-        let labelsGloballyVisible = false; // 現在ラベルを一括表示すべき状態かどうかのフラグ
+        let labelsGloballyVisible = false; 
+        let currentCircle = null; // 現在表示中のサークルオブジェクト
 
-        // 判定エリアを拡張したピンアイコンのSVGを生成する関数
+        // 判定エリアを拡張したピンアイコン
         function getExpandedIcon(color) {
-            // 見た目のピンは小さいまま、周囲に透明な判定用の円(r=30)を配置したSVG
             const svg = `
                 <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
@@ -223,8 +224,8 @@
                 url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
                 size: new google.maps.Size(60, 60),
                 scaledSize: new google.maps.Size(60, 60),
-                anchor: new google.maps.Point(30, 39), // ピンの先端を座標に合わせる
-                labelOrigin: new google.maps.Point(30, 48) // 社名ラベルの表示位置
+                anchor: new google.maps.Point(30, 39),
+                labelOrigin: new google.maps.Point(30, 48)
             };
         }
 
@@ -270,9 +271,17 @@
                 keepSpiderfied: true
             });
 
-            map.addListener('click', () => { if (infoWindow) infoWindow.close(); });
+            // 地図クリックで吹き出しとサークルを閉じる
+            map.addListener('click', () => { 
+                if (infoWindow) infoWindow.close(); 
+                clearCurrentCircle();
+            });
 
-            // 画面移動・停止時のラベル制御
+            // 吹き出しの「×」で閉じた時もサークルを消す
+            infoWindow.addListener('closeclick', () => {
+                clearCurrentCircle();
+            });
+
             map.addListener('idle', () => {
                 const bounds = map.getBounds();
                 if (!bounds) return;
@@ -292,7 +301,7 @@
                             m.setLabel({
                                 text: m.fullLabel,
                                 className: 'marker-label',
-                                anchor: new google.maps.Point(m.fullLabel.length * 3.5, 0) // anchorはlabelOriginからの相対
+                                anchor: new google.maps.Point(m.fullLabel.length * 3.5, 0)
                             });
                         }
                     } else {
@@ -301,7 +310,11 @@
                 });
             });
 
+            // マーカークリック時の処理
             oms.addListener('click', function(marker) {
+                // サークルの描画（7km）
+                showRadiusCircle(marker.getPosition());
+                
                 infoWindow.setContent(marker.desc);
                 infoWindow.open(map, marker);
             });
@@ -315,6 +328,29 @@
 
             setupHeaderToggle();
         };
+
+        // 指定座標を中心に半径7kmの円を表示
+        function showRadiusCircle(center) {
+            clearCurrentCircle();
+            currentCircle = new google.maps.Circle({
+                strokeColor: '#3b82f6', // 青
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillOpacity: 0, // 塗りつぶしなし
+                map: map,
+                center: center,
+                radius: 7000, // 半径7kmに変更
+                clickable: false 
+            });
+        }
+
+        // 表示中の円を削除
+        function clearCurrentCircle() {
+            if (currentCircle) {
+                currentCircle.setMap(null);
+                currentCircle = null;
+            }
+        }
 
         function setupHeaderToggle() {
             const header = document.getElementById('main-header');
@@ -368,6 +404,7 @@
             markers.forEach(m => m.setMap(null));
             markers = [];
             oms.clearMarkers();
+            clearCurrentCircle();
 
             const lowerKeyword = keyword.toLowerCase();
             if (allData.length === 0) return;
@@ -380,7 +417,7 @@
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
 
-            const pinColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444"; // 青 or 赤
+            const pinColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444";
             const customIcon = getExpandedIcon(pinColor);
 
             allData.forEach((row, i) => {
@@ -401,7 +438,6 @@
                     
                     marker.fullLabel = companyName;
 
-                    // ホバー時の個別ラベル表示機能
                     marker.addListener('mouseover', () => {
                         if (!labelsGloballyVisible) {
                             marker.setLabel({
