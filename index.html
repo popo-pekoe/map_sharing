@@ -6,6 +6,8 @@
     <title>住所録検索マップ (Google Maps版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <!-- 重なったピンを広げるライブラリ (OMS) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/OverlappingMarkerSpiderfier/1.0.3/oms.min.js"></script>
     <style>
         #map { height: 100vh; width: 100%; z-index: 0; }
         
@@ -101,7 +103,7 @@
 
         input::placeholder { font-size: 0.8rem; }
 
-        /* コンパクトなヘッダー用のアニメーション */
+        /* コンパクトなヘッダー */
         #main-header {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             max-width: 90vw;
@@ -144,18 +146,16 @@
                 </svg>
             </div>
             
-            <!-- 通常時のラベルと件数 -->
             <div id="collapsed-info" class="flex-1 overflow-hidden">
                 <h1 id="header-title" class="text-xs font-bold text-gray-800 tracking-tight whitespace-nowrap">拠点を探す</h1>
                 <div id="status-badge" class="text-[9px] text-gray-400 font-medium italic whitespace-nowrap">読込中...</div>
             </div>
 
-            <!-- 折りたたみ時に表示しておく機能アイコン群 -->
             <div id="collapsed-icons" class="flex items-center gap-1.5 px-2 text-gray-400 border-l border-gray-100 ml-1">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="絞り込み">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 8.293A1 1 0 013 7.586V4z" />
                 </svg>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="住所検索">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
             </div>
@@ -186,7 +186,6 @@
                 </div>
                 <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors text-nowrap shadow-sm">移動</button>
             </div>
-            <!-- 折りたたみボタン（デスクトップ用） -->
             <button id="collapse-btn" class="hidden md:block text-gray-300 hover:text-gray-600 p-1 shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -205,7 +204,7 @@
 
         const CORRECTION_GAS_URL = "https://script.google.com/macros/s/AKfycbza6D9o3nwIpQbzZRx3BXFwJnpkBO8R3OH9nmTtszExj1EvShdXyiXj1tQcx169hGiaPQ/exec"; 
 
-        let map, geocoder, infoWindow;
+        let map, geocoder, infoWindow, oms;
         let markers = [];
         let allData = [];
         let currentUrl = PUBLIC_CSV_URL;
@@ -231,6 +230,25 @@
             });
             geocoder = new google.maps.Geocoder();
             infoWindow = new google.maps.InfoWindow();
+
+            // OverlappingMarkerSpiderfierの初期化
+            oms = new OverlappingMarkerSpiderfier(map, {
+                markersWontMove: true,
+                markersWontHide: true,
+                basicFormatEvents: true,
+                keepSpiderfied: true
+            });
+
+            // 地図クリックで閉じる
+            map.addListener('click', () => {
+                if (infoWindow) infoWindow.close();
+            });
+
+            // OMS経由でクリックイベントをハンドルする
+            oms.addListener('click', function(marker) {
+                infoWindow.setContent(marker.desc);
+                infoWindow.open(map, marker);
+            });
 
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('mode') === 'vip') {
@@ -292,10 +310,12 @@
         }
 
         function renderMarkers(keyword) {
+            // 既存マーカーとOMSのクリア
             markers.forEach(m => m.setMap(null));
             markers = [];
+            oms.clearMarkers();
+
             const lowerKeyword = keyword.toLowerCase();
-            
             if (allData.length === 0) return;
             
             const keys = Object.keys(allData[0]);
@@ -322,8 +342,8 @@
                         icon: currentUrl === VIP_CSV_URL ? "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" : null,
                         label: {
                             text: companyName,
-                            className: 'marker-label', // CSSクラスでスタイルを当てる
-                            anchor: new google.maps.Point(companyName.length * 3.5, -10) // ラベルの位置調整 (x, y)
+                            className: 'marker-label',
+                            anchor: new google.maps.Point(companyName.length * 3.5, -10)
                         }
                     });
                     
@@ -355,10 +375,12 @@
                             </div>
                         </div>`;
 
-                    marker.addListener('click', () => {
-                        infoWindow.setContent(content);
-                        infoWindow.open(map, marker);
-                    });
+                    // マーカーにデータを紐付け
+                    marker.desc = content;
+                    
+                    // OMSにマーカーを追加
+                    oms.addMarker(marker);
+                    
                     markers.push(marker);
                     bounds.extend(pos);
                     count++;
@@ -397,7 +419,7 @@
                 await fetch(url, { mode: 'no-cors' });
                 container.innerHTML = `<div class="py-10 text-center text-green-600 font-bold">送信完了</div>`;
             } catch (e) {
-                errorArea.textContent = "送信失敗。"; errorArea.classList.remove('hidden');
+                errorArea.textContent = "失敗。"; errorArea.classList.remove('hidden');
                 btn.disabled = false; btn.innerHTML = "送信する";
             }
         };
