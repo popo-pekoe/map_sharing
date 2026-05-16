@@ -159,6 +159,18 @@
         </div>
         
         <div id="search-area" class="hidden opacity-0 flex flex-col md:flex-row gap-2 w-full px-2 pb-2 md:pb-0 md:pr-2 transition-opacity duration-200">
+            <!-- カテゴリフィルター -->
+            <div class="relative w-full md:w-36 shrink-0">
+                <select id="category-filter" class="w-full pl-3 pr-8 py-1.5 bg-gray-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none">
+                    <option value="all">すべてのカテゴリ</option>
+                    <option value="namacon">生コン</option>
+                    <option value="kenzai">建材</option>
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                    <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+            </div>
+
             <div class="relative flex-1">
                 <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-500">
                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -212,12 +224,24 @@
         let labelsGloballyVisible = false; 
         let currentCircle = null; // 現在表示中のサークルオブジェクト
 
+        // カテゴリごとの色設定
+        const CATEGORY_STYLES = {
+            "！(廃業)": { fill: "#4b5563", stroke: "white" }, // グレー
+            "◆管理用": { fill: "#9333ea", stroke: "white" }, // 紫
+            "green(建材-直接)": { fill: "#16a34a", stroke: "white" }, // 緑
+            "pink(生コン-間接)": { fill: "#ec4899", stroke: "white" }, // ピンク
+            "red(生コン-直接)": { fill: "#ef4444", stroke: "white" }, // 赤
+            "sky-blue(取引無し)": { fill: "#0ea5e9", stroke: "white" }, // 水色
+            "white(材料無し)": { fill: "#ffffff", stroke: "#9ca3af" }, // 白（枠はグレー）
+            "yellow(建材-間接)": { fill: "#eab308", stroke: "white" } // 黄色
+        };
+
         // 判定エリアを拡張したピンアイコン
-        function getExpandedIcon(color) {
+        function getExpandedIcon(fillColor, strokeColor = "white") {
             const svg = `
                 <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
-                    <path d="M30 15c-4.42 0-8 3.58-8 8 0 6 8 16 8 16s8-10 8-16c0-4.42-3.58-8-8-8zm0 10.8c-1.55 0-2.8-1.25-2.8-2.8s1.25-2.8 2.8-2.8 2.8 1.25 2.8 2.8-1.25 2.8-2.8 2.8z" fill="${color}" stroke="white" stroke-width="1.5"/>
+                    <path d="M30 15c-4.42 0-8 3.58-8 8 0 6 8 16 8 16s8-10 8-16c0-4.42-3.58-8-8-8zm0 10.8c-1.55 0-2.8-1.25-2.8-2.8s1.25-2.8 2.8-2.8 2.8 1.25 2.8 2.8-1.25 2.8-2.8 2.8z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.5"/>
                 </svg>
             `;
             return {
@@ -395,7 +419,7 @@
                 skipEmptyLines: true,
                 complete: (results) => {
                     allData = results.data;
-                    renderMarkers("");
+                    renderMarkers(document.getElementById('search-input').value);
                 }
             });
         }
@@ -407,12 +431,15 @@
             clearCurrentCircle();
 
             const lowerKeyword = keyword.toLowerCase();
+            const selectedCategory = document.getElementById('category-filter').value;
+
             if (allData.length === 0) return;
             
             const keys = Object.keys(allData[0]);
             const latKey = keys.find(k => ['緯度', 'lat'].some(kw => k.toLowerCase().includes(kw)));
             const lngKey = keys.find(k => ['経度', 'lng'].some(kw => k.toLowerCase().includes(kw)));
             const nameKey = keys.find(k => ['名', 'name', 'タイトル', '会社名'].some(kw => k.toLowerCase().includes(kw)));
+            const categoryKey = keys.find(k => ['カテゴリ', 'category'].some(kw => k.toLowerCase().includes(kw)));
 
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
@@ -421,6 +448,18 @@
             const customIcon = getExpandedIcon(pinColor);
 
             allData.forEach((row, i) => {
+                // カテゴリ絞り込み判定
+                const catValue = categoryKey ? row[categoryKey]?.trim() : null;
+                if (categoryKey && selectedCategory !== 'all') {
+                    if (selectedCategory === 'namacon') {
+                        const validCats = ['red(生コン-直接)', 'pink(生コン-間接)', '！(廃業)', 'sky-blue(取引無し)'];
+                        if (!validCats.includes(catValue)) return;
+                    } else if (selectedCategory === 'kenzai') {
+                        const validCats = ['yellow(建材-間接)', 'green(建材-直接)', '！(廃業)', 'sky-blue(取引無し)'];
+                        if (!validCats.includes(catValue)) return;
+                    }
+                }
+
                 if (!Object.values(row).some(v => String(v).toLowerCase().includes(lowerKeyword))) return;
 
                 const lat = parseFloat(row[latKey]?.replace(/[^\d.-]/g, ''));
@@ -429,6 +468,17 @@
                 if (!isNaN(lat) && !isNaN(lng)) {
                     const pos = { lat, lng };
                     const companyName = row[nameKey] || `地点 ${i+1}`;
+
+                    // デフォルトは赤(VIPなら青)。カテゴリに色設定があれば上書き
+                    let fillColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444";
+                    let strokeColor = "white";
+                    
+                    if (catValue && CATEGORY_STYLES[catValue]) {
+                        fillColor = CATEGORY_STYLES[catValue].fill;
+                        strokeColor = CATEGORY_STYLES[catValue].stroke;
+                    }
+
+                    const customIcon = getExpandedIcon(fillColor, strokeColor);
 
                     const marker = new google.maps.Marker({ 
                         position: pos, 
@@ -538,6 +588,7 @@
         }
 
         document.getElementById('search-input').addEventListener('input', (e) => renderMarkers(e.target.value));
+        document.getElementById('category-filter').addEventListener('change', () => renderMarkers(document.getElementById('search-input').value));
         document.getElementById('address-search-btn').onclick = searchAddress;
         document.getElementById('address-search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchAddress(); });
 
