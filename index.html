@@ -222,7 +222,7 @@
         let isExpanded = false;
         let isViewRestored = false;
         let labelsGloballyVisible = false; 
-        let currentCircle = null; // 現在表示中のサークルオブジェクト
+        let currentCircle = null; 
 
         // カテゴリごとの色設定
         const CATEGORY_STYLES = {
@@ -236,12 +236,15 @@
             "yellow(建材-間接)": { fill: "#eab308", stroke: "white" } // 黄色
         };
 
-        // 判定エリアを拡張したピンアイコン
+        // 通常の丸いピンアイコン（判定エリア拡張版・面積比2倍）
         function getExpandedIcon(fillColor, strokeColor = "white") {
             const svg = `
                 <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
-                    <path d="M30 15c-4.42 0-8 3.58-8 8 0 6 8 16 8 16s8-10 8-16c0-4.42-3.58-8-8-8zm0 10.8c-1.55 0-2.8-1.25-2.8-2.8s1.25-2.8 2.8-2.8 2.8 1.25 2.8 2.8-1.25 2.8-2.8 2.8z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.5"/>
+                    <!-- 先端(30,39)を基準に1.414倍(面積2倍)に拡大 -->
+                    <g transform="translate(30, 39) scale(1.414) translate(-30, -39)">
+                        <path d="M30 15c-4.42 0-8 3.58-8 8 0 6 8 16 8 16s8-10 8-16c0-4.42-3.58-8-8-8zm0 10.8c-1.55 0-2.8-1.25-2.8-2.8s1.25-2.8 2.8-2.8 2.8 1.25 2.8 2.8-1.25 2.8-2.8 2.8z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.06"/>
+                    </g>
                 </svg>
             `;
             return {
@@ -250,6 +253,28 @@
                 scaledSize: new google.maps.Size(60, 60),
                 anchor: new google.maps.Point(30, 39),
                 labelOrigin: new google.maps.Point(30, 48)
+            };
+        }
+
+        // 廃業カテゴリ用の警告アイコン（三角の中に！）
+        function getWarningExpandedIcon(fillColor, strokeColor = "white") {
+            const svg = `
+                <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                    <!-- 透明な判定エリア -->
+                    <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
+                    <!-- 三角形の背景（角を丸めて少し柔らかく） -->
+                    <path d="M30 14 L14 42 L46 42 Z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2.5" stroke-linejoin="round"/>
+                    <!-- エクスクラメーションマーク -->
+                    <line x1="30" y1="22" x2="30" y2="33" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+                    <circle cx="30" cy="38" r="2.2" fill="white"/>
+                </svg>
+            `;
+            return {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                size: new google.maps.Size(60, 60),
+                scaledSize: new google.maps.Size(60, 60),
+                anchor: new google.maps.Point(30, 43.5), // 三角形の底辺中央にアンカーを合わせる
+                labelOrigin: new google.maps.Point(30, 52) // ラベル位置
             };
         }
 
@@ -363,7 +388,7 @@
                 fillOpacity: 0, // 塗りつぶしなし
                 map: map,
                 center: center,
-                radius: 7000, // 半径7kmに変更
+                radius: 7000, 
                 clickable: false 
             });
         }
@@ -444,9 +469,6 @@
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
 
-            const pinColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444";
-            const customIcon = getExpandedIcon(pinColor);
-
             allData.forEach((row, i) => {
                 // カテゴリ絞り込み判定
                 const catValue = categoryKey ? row[categoryKey]?.trim() : null;
@@ -469,7 +491,6 @@
                     const pos = { lat, lng };
                     const companyName = row[nameKey] || `地点 ${i+1}`;
 
-                    // デフォルトは赤(VIPなら青)。カテゴリに色設定があれば上書き
                     let fillColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444";
                     let strokeColor = "white";
                     
@@ -478,7 +499,10 @@
                         strokeColor = CATEGORY_STYLES[catValue].stroke;
                     }
 
-                    const customIcon = getExpandedIcon(fillColor, strokeColor);
+                    // 「！(廃業)」の時は三角形の警告アイコンを使用、それ以外は丸いピン
+                    const customIcon = (catValue === "！(廃業)") 
+                        ? getWarningExpandedIcon(fillColor, strokeColor)
+                        : getExpandedIcon(fillColor, strokeColor);
 
                     const marker = new google.maps.Marker({ 
                         position: pos, 
