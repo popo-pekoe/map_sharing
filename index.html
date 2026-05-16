@@ -226,14 +226,16 @@
 
         // カテゴリごとの色設定
         const CATEGORY_STYLES = {
-            "！(廃業)": { fill: "#4b5563", stroke: "white" }, // グレー
-            "◆管理用": { fill: "#9333ea", stroke: "white" }, // 紫
-            "green(建材-直接)": { fill: "#16a34a", stroke: "white" }, // 緑
-            "pink(生コン-間接)": { fill: "#ec4899", stroke: "white" }, // ピンク
-            "red(生コン-直接)": { fill: "#ef4444", stroke: "white" }, // 赤
-            "sky-blue(取引無し)": { fill: "#0ea5e9", stroke: "white" }, // 水色
-            "white(材料無し)": { fill: "#ffffff", stroke: "#9ca3af" }, // 白（枠はグレー）
-            "yellow(建材-間接)": { fill: "#eab308", stroke: "white" } // 黄色
+            "！(廃業)": { fill: "#4b5563", stroke: "white" }, // 現状維持
+            "◆管理用": { fill: "#9333ea", stroke: "white" }, // 現状維持
+            "green(建材-直接)": { fill: "#138D75", stroke: "white" }, 
+            "pink(生コン-間接)": { fill: "#F5B041", stroke: "white" }, 
+            "red(生コン-直接)": { fill: "#E67E22", stroke: "white" }, 
+            "sky-blue(取引無し)": { fill: "#7D6D8B", stroke: "white" }, 
+            "white(材料無し)": { fill: "#A89BB8", stroke: "white" }, 
+            "yellow(建材-間接)": { fill: "#48C9B0", stroke: "white" },
+            "建材生コン-直接": { fill: "#B7950B", stroke: "white" },
+            "建材生コン-間接": { fill: "#D4AC0D", stroke: "white" }
         };
 
         // 通常の丸いピンアイコン（判定エリア拡張版・面積比2倍）
@@ -469,15 +471,18 @@
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
 
+            const pinColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444";
+            const customIcon = getExpandedIcon(pinColor);
+
             allData.forEach((row, i) => {
                 // カテゴリ絞り込み判定
                 const catValue = categoryKey ? row[categoryKey]?.trim() : null;
                 if (categoryKey && selectedCategory !== 'all') {
                     if (selectedCategory === 'namacon') {
-                        const validCats = ['red(生コン-直接)', 'pink(生コン-間接)', '！(廃業)', 'sky-blue(取引無し)'];
+                        const validCats = ['red(生コン-直接)', 'pink(生コン-間接)', '建材生コン-直接', '建材生コン-間接', '！(廃業)', 'sky-blue(取引無し)'];
                         if (!validCats.includes(catValue)) return;
                     } else if (selectedCategory === 'kenzai') {
-                        const validCats = ['yellow(建材-間接)', 'green(建材-直接)', '！(廃業)', 'sky-blue(取引無し)'];
+                        const validCats = ['yellow(建材-間接)', 'green(建材-直接)', '建材生コン-直接', '建材生コン-間接', '！(廃業)', 'sky-blue(取引無し)'];
                         if (!validCats.includes(catValue)) return;
                     }
                 }
