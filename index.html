@@ -129,6 +129,11 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             pointer-events: none; /* ラベルがマウスイベントを邪魔しないように */
         }
+
+        /* 左下のマップコントロール（地図/航空写真）を少し上に浮かせる */
+        .gm-style-mtc {
+            margin-bottom: 60px !important;
+        }
     </style>
 </head>
 <body class="bg-gray-50 font-sans text-gray-900 overflow-hidden">
@@ -223,7 +228,7 @@
         let isViewRestored = false;
         let labelsGloballyVisible = false; 
         let currentCircle = null; 
-        let isFirstRenderDone = false; // 初回描画完了フラグを追加
+        let isFirstRenderDone = false; 
 
         // カテゴリごとの色設定
         const CATEGORY_STYLES = {
@@ -334,9 +339,10 @@
             map = new google.maps.Map(document.getElementById('map'), {
                 center: initialCenter,
                 zoom: initialZoom,
-                mapTypeId: initialMapTypeId, // マップの種類を設定
+                mapTypeId: initialMapTypeId, 
                 mapTypeControl: true,
-                mapTypeControlOptions: { position: google.maps.ControlPosition.LEFT_BOTTOM },
+                // 配置を元の左下に戻す
+                mapTypeControlOptions: { position: google.maps.ControlPosition.LEFT_BOTTOM }, 
                 streetViewControl: true,
                 zoomControl: true,
                 zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }
@@ -537,7 +543,7 @@
                         strokeColor = CATEGORY_STYLES[catValue].stroke;
                     }
 
-                    // 「！(廃業)」の時は三角形の警告アイコンを使用、それ以外は押しピン
+                    // 「！(廃業)」の時は三角形の警告アイコンを使用、それ以外は丸いピン
                     const customIcon = (catValue === "！(廃業)") 
                         ? getWarningExpandedIcon(fillColor, strokeColor)
                         : getExpandedIcon(fillColor, strokeColor);
