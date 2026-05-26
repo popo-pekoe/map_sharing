@@ -113,7 +113,7 @@
         }
         .header-expanded {
             width: 100%;
-            max-width: 680px !important;
+            max-width: 720px !important; /* ボタン増幅のため最大横幅を少し拡張 */
         }
 
         /* マーカーラベルのスタイル調整 */
@@ -198,6 +198,7 @@
                     >
                 </div>
                 <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors text-nowrap shadow-sm">移動</button>
+                <button id="circle-clear-btn" class="hidden bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors text-nowrap shadow-sm">クリア</button>
             </div>
             <!-- 閉じるボタン -->
             <button id="collapse-btn" class="hidden md:block text-gray-300 hover:text-gray-600 p-1 shrink-0">
@@ -227,7 +228,8 @@
         let isExpanded = false;
         let isViewRestored = false;
         let labelsGloballyVisible = false; 
-        let currentCircle = null; 
+        let currentCircle = null; // ピンクリック用のサークルオブジェクト
+        let addressCircle = null; // 住所検索用のサークルオブジェクト
         let isFirstRenderDone = false; 
 
         // カテゴリごとの色設定
@@ -341,7 +343,6 @@
                 zoom: initialZoom,
                 mapTypeId: initialMapTypeId, 
                 mapTypeControl: true,
-                // 配置を元の左下に戻す
                 mapTypeControlOptions: { position: google.maps.ControlPosition.LEFT_BOTTOM }, 
                 streetViewControl: true,
                 zoomControl: true,
@@ -440,6 +441,15 @@
                 currentCircle.setMap(null);
                 currentCircle = null;
             }
+        }
+
+        // 住所検索用のサークルを削除
+        function clearAddressCircle() {
+            if (addressCircle) {
+                addressCircle.setMap(null);
+                addressCircle = null;
+            }
+            document.getElementById('circle-clear-btn').classList.add('hidden');
         }
 
         function setupHeaderToggle() {
@@ -647,13 +657,51 @@
             }
         };
 
+        // 住所検索を実行し、中心に7kmの白いサークルを描画する
         function searchAddress() {
             const q = document.getElementById('address-search-input').value;
             if (!q) return;
+
+            const badge = document.getElementById('status-badge');
+            const originalText = badge.textContent;
+            badge.textContent = "住所を検索中...";
+            badge.className = "text-[9px] text-blue-500 font-bold italic";
+
             geocoder.geocode({ address: q }, (res, status) => {
                 if (status === 'OK') {
-                    map.setCenter(res[0].geometry.location);
-                    map.setZoom(17);
+                    const location = res[0].geometry.location;
+                    map.setCenter(location);
+                    map.setZoom(12); // 7kmの円が見やすい適切なズームレベル
+
+                    // 既存の住所検索サークルを消去
+                    clearAddressCircle();
+
+                    // 新しい白色サークルを描画（半径7km = 7000m）
+                    addressCircle = new google.maps.Circle({
+                        strokeColor: '#ffffff', // 白色
+                        strokeOpacity: 0.9,
+                        strokeWeight: 3, // 太さ3pxで見やすく
+                        fillOpacity: 0, // 塗りつぶしなし
+                        map: map,
+                        center: location,
+                        radius: 7000, 
+                        clickable: false 
+                    });
+
+                    // ステータス表示を戻す
+                    badge.textContent = originalText;
+                    badge.className = currentUrl === VIP_CSV_URL ? "text-[9px] text-blue-600 font-bold" : "text-[9px] text-gray-400 font-medium";
+
+                    // クリアボタンを表示
+                    document.getElementById('circle-clear-btn').classList.remove('hidden');
+                } else {
+                    // エラーメッセージのバッジ表示（ブラウザalertは禁止ルールに準拠）
+                    badge.textContent = "⚠ 住所が見つかりません";
+                    badge.className = "text-[9px] text-red-500 font-bold";
+                    setTimeout(() => {
+                        badge.textContent = originalText;
+                        badge.className = currentUrl === VIP_CSV_URL ? "text-[9px] text-blue-600 font-bold" : "text-[9px] text-gray-400 font-medium";
+                    }, 5000);
                 }
             });
         }
@@ -662,6 +710,12 @@
         document.getElementById('category-filter').addEventListener('change', () => renderMarkers(document.getElementById('search-input').value));
         document.getElementById('address-search-btn').onclick = searchAddress;
         document.getElementById('address-search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchAddress(); });
+        
+        // 住所クリアボタンの処理
+        document.getElementById('circle-clear-btn').onclick = () => {
+            clearAddressCircle();
+            document.getElementById('address-search-input').value = '';
+        };
 
         loadGoogleMaps();
     </script>
