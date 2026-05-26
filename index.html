@@ -246,12 +246,12 @@
             "建材生コン-間接": { fill: "#D4AC0D", stroke: "white" }
         };
 
-        // 通常の丸いピンアイコン（判定エリア拡張版・面積比2倍）
+        // 通常の丸いピンアイコン（判定エリア拡張版・面積比2倍・完全にフラット化して軽量化）
         function getExpandedIcon(fillColor, strokeColor = "white") {
             const svg = `
                 <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
-                    <!-- 先端(30,39)を基準に1.414倍(面積2倍)に拡大 -->
+                    <!-- 先端(30,39)を基準に1.414倍(面積2倍)に拡大。描画負荷となる重いfilter処理はすべて廃止 -->
                     <g transform="translate(30, 39) scale(1.414) translate(-30, -39)">
                         <path d="M30 15c-4.42 0-8 3.58-8 8 0 6 8 16 8 16s8-10 8-16c0-4.42-3.58-8-8-8zm0 10.8c-1.55 0-2.8-1.25-2.8-2.8s1.25-2.8 2.8-2.8 2.8 1.25 2.8 2.8-1.25 2.8-2.8 2.8z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.06"/>
                     </g>
@@ -266,22 +266,12 @@
             };
         }
 
-        // 廃業カテゴリ用の警告アイコン（三角の中に！）
+        // 廃業カテゴリ用の警告アイコン（三角の中に！・完全にフラット化して軽量化）
         function getWarningExpandedIcon(fillColor, strokeColor = "white") {
             const svg = `
                 <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                        <filter id="warningShadow" x="-20%" y="-20%" width="140%" height="140%">
-                            <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur"/>
-                            <feOffset in="blur" dx="1" dy="2" result="offsetBlur"/>
-                            <feMerge>
-                                <feMergeNode in="offsetBlur"/>
-                                <feMergeNode in="SourceGraphic"/>
-                            </feMerge>
-                        </filter>
-                    </defs>
                     <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
-                    <g filter="url(#warningShadow)">
+                    <g>
                         <!-- 三角形の背景 -->
                         <path d="M30 14 L14 42 L46 42 Z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2.5" stroke-linejoin="round"/>
                         <!-- エクスクラメーションマーク -->
@@ -370,6 +360,13 @@
                 clearCurrentCircle();
             });
 
+            // ズーム操作が開始された瞬間に、すべてのマーカーを一時的に非表示にして高速化する
+            map.addListener('zoom_changed', () => {
+                markers.forEach(m => {
+                    m.setMap(null);
+                });
+            });
+
             // マップ移動やズーム・種類変更時に状態を保存
             map.addListener('idle', () => {
                 const bounds = map.getBounds();
@@ -387,6 +384,9 @@
                 labelsGloballyVisible = visibleMarkers.length <= 30;
 
                 markers.forEach(m => {
+                    // マップ上に再表示
+                    m.setMap(map);
+
                     if (labelsGloballyVisible) {
                         if (!m.getLabel()) {
                             m.setLabel({
