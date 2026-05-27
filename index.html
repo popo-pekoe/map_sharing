@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>住所録検索マップ (Google Maps版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
@@ -10,6 +10,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/OverlappingMarkerSpiderfier/1.0.3/oms.min.js"></script>
     <style>
         #map { height: 100vh; width: 100%; z-index: 0; }
+        
+        /* タブレット・スマホでのダブルタップズームの防止 */
+        body, input, button, select, textarea {
+            touch-action: manipulation;
+        }
         
         /* ポップアップ内の表示設定 */
         .info-window-container {
@@ -164,9 +169,9 @@
         </div>
         
         <div id="search-area" class="hidden opacity-0 flex flex-col md:flex-row gap-2 w-full px-2 pb-2 md:pb-0 md:pr-2 transition-opacity duration-200">
-            <!-- カテゴリフィルター -->
+            <!-- カテゴリフィルター (iOS入力ズーム対策：モバイルでは16px、PCなど大画面では12px相当に自動で最適化) -->
             <div class="relative w-full md:w-36 shrink-0">
-                <select id="category-filter" class="w-full pl-3 pr-8 py-1.5 bg-gray-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none">
+                <select id="category-filter" class="w-full pl-3 pr-8 py-1.5 bg-gray-100 border-none rounded-xl text-base md:text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none">
                     <option value="all">すべてのカテゴリ</option>
                     <option value="namacon">生コン</option>
                     <option value="kenzai">建材</option>
@@ -177,24 +182,24 @@
             </div>
 
             <div class="relative flex-1">
-                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-500">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-500 pointer-events-none">
                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 8.293A1 1 0 013 7.586V4z" />
                     </svg>
                 </span>
                 <input type="text" id="search-input" placeholder="キーワードで絞り込み" 
-                    class="w-full pl-8 pr-4 py-1.5 bg-gray-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                    class="w-full pl-8 pr-4 py-1.5 bg-gray-100 border-none rounded-xl text-base md:text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                 >
             </div>
             <div class="relative flex-1 flex gap-1">
                 <div class="relative flex-1">
-                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-emerald-500">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-emerald-500 pointer-events-none">
                         <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </span>
                     <input type="text" id="address-search-input" placeholder="住所・地名を検索" 
-                        class="w-full pl-8 pr-4 py-1.5 bg-gray-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 transition-all outline-none"
+                        class="w-full pl-8 pr-4 py-1.5 bg-gray-100 border-none rounded-xl text-base md:text-xs focus:ring-2 focus:ring-emerald-500 transition-all outline-none"
                     >
                 </div>
                 <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors text-nowrap shadow-sm">移動</button>
@@ -266,7 +271,7 @@
             };
         }
 
-        // 廃業カテゴリ用の警告アイコン（三角の中に！・完全にフラット化して軽量化）
+        // 廃業カテゴリ用の警告アイコン（三角の中に！）
         function getWarningExpandedIcon(fillColor, strokeColor = "white") {
             const svg = `
                 <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
@@ -336,7 +341,9 @@
                 mapTypeControlOptions: { position: google.maps.ControlPosition.LEFT_BOTTOM }, 
                 streetViewControl: true,
                 zoomControl: true,
-                zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }
+                zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+                // モバイルで常に1本指でのスムーズな地図移動・ズーム操作を許可する設定
+                gestureHandling: 'greedy' 
             });
 
             geocoder = new google.maps.Geocoder();
@@ -731,6 +738,13 @@
             clearAddressCircle();
             document.getElementById('address-search-input').value = '';
         };
+
+        // iPad/iPhone等のブラウザで2本指ピンチ操作が行われた際、Webページ全体の強制ズームを防止する
+        document.addEventListener('touchmove', function (event) {
+            if (event.touches.length > 1) {
+                event.preventDefault(); // 2本指によるページ自体のピンチズーム挙動を完全無効化
+            }
+        }, { passive: false });
 
         loadGoogleMaps();
     </script>
