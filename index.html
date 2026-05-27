@@ -153,8 +153,10 @@
                 </svg>
             </div>
             
-            <div id="collapsed-info" class="flex-1 overflow-hidden">
+            <div id="collapsed-info" class="flex-1 overflow-hidden py-0.5">
                 <h1 id="header-title" class="text-xs font-bold text-gray-800 tracking-tight whitespace-nowrap">拠点を探す</h1>
+                <!-- 縮小時に適用中のフィルター条件を小さく並べるプレビューエリア -->
+                <div id="active-filters-preview" class="hidden flex-wrap gap-1 mt-0.5 max-w-[140px] overflow-hidden whitespace-nowrap"></div>
                 <div id="status-badge" class="text-[9px] text-gray-400 font-medium italic whitespace-nowrap">読込中...</div>
             </div>
 
@@ -356,10 +358,13 @@
                 keepSpiderfied: true
             });
 
-            // 地図クリックで吹き出しとサークルを閉じる
+            // 地図クリックで吹き出しとサークルを閉じる、また展開中のメニューをたたむ
             map.addListener('click', () => { 
                 if (infoWindow) infoWindow.close(); 
                 clearCurrentCircle();
+                if (isExpanded) {
+                    toggleHeader(false); // メニューをたたむ
+                }
             });
 
             // 吹き出しの「×」で閉じた時もサークルを消す
@@ -379,6 +384,10 @@
                 markers.forEach(m => {
                     m.setMap(null);
                 });
+                // 移動開始時にもメニューが開いていたらスマートに閉じる
+                if (isExpanded) {
+                    toggleHeader(false);
+                }
             });
 
             // マップ移動やズーム・種類変更など、動きが完全に静止した時に状態保存とピン再描画を行う
@@ -472,35 +481,114 @@
                 addressCircle = null;
             }
             document.getElementById('circle-clear-btn').classList.add('hidden');
+            updateActiveFiltersPreview();
+        }
+
+        // 適用中のフィルターを解析し、たたまれたヘッダーに小さく表示する関数
+        function updateActiveFiltersPreview() {
+            const previewContainer = document.getElementById('active-filters-preview');
+            if (!previewContainer) return;
+
+            previewContainer.innerHTML = '';
+
+            // メニューが開いているときはバッジ表示を非表示にする
+            if (isExpanded) {
+                previewContainer.classList.add('hidden');
+                previewContainer.classList.remove('flex');
+                return;
+            }
+
+            const categoryVal = document.getElementById('category-filter').value;
+            const searchVal = document.getElementById('search-input').value.trim();
+            const addressVal = document.getElementById('address-search-input').value.trim();
+
+            let hasActiveFilter = false;
+
+            // 1. カテゴリのバッジ表示
+            if (categoryVal !== 'all') {
+                hasActiveFilter = true;
+                const badge = document.createElement('span');
+                // カテゴリカラーと連動した配色
+                if (categoryVal === 'namacon') {
+                    badge.className = 'text-[8px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 border border-orange-200';
+                    badge.textContent = '生コン';
+                } else if (categoryVal === 'kenzai') {
+                    badge.className = 'text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200';
+                    badge.textContent = '建材';
+                }
+                previewContainer.appendChild(badge);
+            }
+
+            // 2. 検索キーワードのバッジ表示
+            if (searchVal) {
+                hasActiveFilter = true;
+                const badge = document.createElement('span');
+                badge.className = 'text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 truncate max-w-[65px]';
+                badge.textContent = `🔍 ${searchVal}`;
+                badge.title = `検索ワード: ${searchVal}`;
+                previewContainer.appendChild(badge);
+            }
+
+            // 3. 住所（半径サークル描画中）のバッジ表示
+            if (addressCircle && addressVal) {
+                hasActiveFilter = true;
+                const badge = document.createElement('span');
+                badge.className = 'text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100 truncate max-w-[65px]';
+                badge.textContent = `📍 ${addressVal}`;
+                badge.title = `中心住所: ${addressVal}`;
+                previewContainer.appendChild(badge);
+            }
+
+            // 条件が1つでもある場合のみコンテナを表示
+            if (hasActiveFilter) {
+                previewContainer.classList.remove('hidden');
+                previewContainer.classList.add('flex');
+            } else {
+                previewContainer.classList.add('hidden');
+                previewContainer.classList.remove('flex');
+            }
+        }
+
+        // メニューの展開・縮小を切り替える共通関数
+        function toggleHeader(forceState) {
+            const header = document.getElementById('main-header');
+            const searchArea = document.getElementById('search-area');
+            const collapsedIcons = document.getElementById('collapsed-icons');
+
+            // forceStateが指定されていればそれに従い、なければ反転
+            isExpanded = (forceState !== undefined) ? forceState : !isExpanded;
+
+            if (isExpanded) {
+                header.classList.replace('header-collapsed', 'header-expanded');
+                collapsedIcons.classList.add('hidden');
+                setTimeout(() => {
+                    searchArea.classList.remove('hidden');
+                    setTimeout(() => searchArea.classList.add('opacity-100'), 50);
+                }, 100);
+            } else {
+                searchArea.classList.remove('opacity-100');
+                setTimeout(() => {
+                    searchArea.classList.add('hidden');
+                    header.classList.replace('header-expanded', 'header-collapsed');
+                    collapsedIcons.classList.remove('hidden');
+                }, 100);
+            }
+
+            // メニュー開閉状態の変更に合わせてプレビューバッジを更新
+            updateActiveFiltersPreview();
         }
 
         function setupHeaderToggle() {
-            const header = document.getElementById('main-header');
             const toggleArea = document.getElementById('header-toggle');
-            const searchArea = document.getElementById('search-area');
-            const collapsedIcons = document.getElementById('collapsed-icons');
             const collapseBtn = document.getElementById('collapse-btn');
 
-            function toggle() {
-                isExpanded = !isExpanded;
-                if (isExpanded) {
-                    header.classList.replace('header-collapsed', 'header-expanded');
-                    collapsedIcons.classList.add('hidden');
-                    setTimeout(() => {
-                        searchArea.classList.remove('hidden');
-                        setTimeout(() => searchArea.classList.add('opacity-100'), 50);
-                    }, 100);
-                } else {
-                    searchArea.classList.remove('opacity-100');
-                    setTimeout(() => {
-                        searchArea.classList.add('hidden');
-                        header.classList.replace('header-expanded', 'header-collapsed');
-                        collapsedIcons.classList.remove('hidden');
-                    }, 100);
-                }
+            toggleArea.onclick = () => { toggleHeader(); };
+            if (collapseBtn) { 
+                collapseBtn.onclick = (e) => { 
+                    e.stopPropagation(); 
+                    toggleHeader(false); // 縮小ボタンなので強制的に閉じる
+                }; 
             }
-            toggleArea.onclick = () => { toggle(); };
-            if (collapseBtn) { collapseBtn.onclick = (e) => { e.stopPropagation(); toggle(); }; }
         }
 
         function enableVipMode() {
@@ -518,6 +606,8 @@
                 complete: (results) => {
                     allData = results.data;
                     renderMarkers(document.getElementById('search-input').value);
+                    // データロード後にもプレビューを一度初期化
+                    updateActiveFiltersPreview();
                 }
             });
         }
@@ -716,6 +806,9 @@
 
                     // クリアボタンを表示
                     document.getElementById('circle-clear-btn').classList.remove('hidden');
+
+                    // 縮小時バッジを更新
+                    updateActiveFiltersPreview();
                 } else {
                     // エラーメッセージのバッジ表示（ブラウザalertは禁止ルールに準拠）
                     badge.textContent = "⚠ 住所が見つかりません";
@@ -728,8 +821,15 @@
             });
         }
 
-        document.getElementById('search-input').addEventListener('input', (e) => renderMarkers(e.target.value));
-        document.getElementById('category-filter').addEventListener('change', () => renderMarkers(document.getElementById('search-input').value));
+        // 入力時のリアルタイムプレビュー更新
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            renderMarkers(e.target.value);
+            updateActiveFiltersPreview();
+        });
+        document.getElementById('category-filter').addEventListener('change', () => {
+            renderMarkers(document.getElementById('search-input').value);
+            updateActiveFiltersPreview();
+        });
         document.getElementById('address-search-btn').onclick = searchAddress;
         document.getElementById('address-search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchAddress(); });
         
