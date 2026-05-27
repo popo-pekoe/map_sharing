@@ -1,1577 +1,723 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <!-- iPad/スマホでのズームを防止し、アプリのように操作できるように設定 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>もじ・すうじ タッチゲーム</title>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google Fonts (丸みのある日本語・英語フォント) -->
-  <link href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@500;700&family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap" rel="stylesheet">
-  <style>
-    body {
-      font-family: 'M PLUS Rounded 1c', 'Kiwi Maru', sans-serif;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
-    }
-    /* 3D風のボタン・カード用シャドウ */
-    .btn-shadow-orange {
-      box-shadow: 0 6px 0 #c2410c;
-    }
-    .btn-shadow-orange:active {
-      transform: translateY(3px);
-      box-shadow: 0 3px 0 #c2410c;
-    }
-    .btn-shadow-green {
-      box-shadow: 0 6px 0 #15803d;
-    }
-    .btn-shadow-green:active {
-      transform: translateY(3px);
-      box-shadow: 0 3px 0 #15803d;
-    }
-    /* キャラクターや数字 of 浮き上がり animation */
-    @keyframes float {
-      0%, 100% { transform: translateY(0px) rotate(0deg); }
-      50% { transform: translateY(-4px) rotate(1.5deg); }
-    }
-    .floating-number {
-      animation: float 4s ease-in-out infinite;
-    }
-    /* シャボン玉背景 */
-    .bubble {
-      position: absolute;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.25);
-      animation: floatUp 12s infinite linear;
-      bottom: -100px;
-      pointer-events: none;
-    }
-    @keyframes floatUp {
-      0% { transform: translateY(0) rotate(0deg); opacity: 0; }
-      10% { opacity: 0.8; }
-      90% { opacity: 0.8; }
-      100% { transform: translateY(-110vh) rotate(360deg); opacity: 0; }
-    }
-    /* 不正解時のぶるぶるアニメーション */
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      25% { transform: translateX(-6px); }
-      75% { transform: translateX(6px); }
-    }
-    .animate-shake {
-      animation: shake 0.15s ease-in-out 2;
-    }
-    
-    /* 10点達成時の「ぷくぷくソーダ」アクアブルーアニメーション */
-    @keyframes soda {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-    .soda-bg {
-      background: linear-gradient(135deg, #00c2e0, #4ea8de, #00b4d8, #00f5d4);
-      background-size: 300% 300%;
-      animation: soda 6s ease-in-out infinite;
-      box-shadow: inset 0 0 16px rgba(255, 255, 255, 0.4);
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>住所録検索マップ (Google Maps版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <!-- 重なったピンを広げるライブラリ (OMS) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/OverlappingMarkerSpiderfier/1.0.3/oms.min.js"></script>
+    <style>
+        #map { height: 100vh; width: 100%; z-index: 0; }
+        
+        /* ポップアップ内の表示設定 */
+        .info-window-container {
+            padding: 4px;
+            min-width: 280px;
+            max-width: 320px;
+            max-height: 450px;
+            overflow-y: auto;
+            font-family: sans-serif;
+            position: relative;
+        }
 
-  <!-- Firebase SDK (ES modules for secure data persistence) -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        .info-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #3b82f6;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            padding-right: 24px;
+        }
 
-    // グローバルにバインドして非moduleスクリプトから呼べるようにする
-    window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, getDoc, setDoc };
-  </script>
+        .info-title {
+            font-weight: bold;
+            font-size: 16px;
+            color: #1e40af;
+            line-height: 1.4;
+        }
+
+        .info-content-value {
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #374151;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .info-label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #9ca3af;
+            display: block;
+            margin-top: 6px;
+        }
+
+        /* 修正依頼ボタン（右上） */
+        .correction-trigger {
+            position: absolute;
+            top: 0;
+            right: 0;
+            color: #9ca3af;
+            padding: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .correction-trigger:hover {
+            color: #ef4444;
+        }
+
+        /* フォームのスタイル */
+        .correction-form {
+            display: none;
+            margin-top: 10px;
+            padding: 12px;
+            background: #fef2f2;
+            border-radius: 12px;
+            border: 1px solid #fee2e2;
+        }
+        .correction-textarea {
+            width: 100%;
+            height: 80px;
+            font-size: 13px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #fca5a5;
+            margin-bottom: 10px;
+            outline: none;
+            background: white;
+        }
+        .correction-submit-btn {
+            width: 100%;
+            background: #ef4444;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 8px;
+            border-radius: 8px;
+        }
+
+        input::placeholder { font-size: 0.8rem; }
+
+        /* コンパクトなヘッダー */
+        #main-header {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            max-width: 90vw;
+        }
+        .header-collapsed {
+            width: 240px;
+        }
+        .header-expanded {
+            width: 100%;
+            max-width: 720px !important; /* ボタン増幅のため最大横幅を少し拡張 */
+        }
+
+        /* マーカーラベルのスタイル調整 */
+        .gm-style .marker-label {
+            background-color: white;
+            color: #1e40af;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #3b82f6;
+            white-space: nowrap;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            pointer-events: none; /* ラベルがマウスイベントを邪魔しないように */
+        }
+
+        /* 左下のマップコントロール（地図/航空写真）を少し上に浮かせる */
+        .gm-style-mtc {
+            margin-bottom: 60px !important;
+        }
+    </style>
 </head>
-<body class="bg-[#00c2e0] h-screen overflow-hidden flex flex-col items-center justify-center p-2 relative select-none">
+<body class="bg-gray-50 font-sans text-gray-900 overflow-hidden">
 
-  <!-- 背景のシャボン玉 (デコレーション) -->
-  <div id="bubble-container" class="absolute inset-0 overflow-hidden pointer-events-none z-0"></div>
-
-  <!-- メインコンテナ (画面比率に合わせた頑丈なカード。スマホ時は全面、iPad時は中央に大きく表示) -->
-  <div class="w-full max-w-4xl h-[95vh] md:h-[92vh] bg-[#00b4d8] rounded-[24px] md:rounded-[36px] border-4 md:border-8 border-white shadow-2xl flex flex-col overflow-hidden relative z-10">
-    
-    <!-- 1. スタート・設定画面 (初期状態：スマホは縦積み、タブレットは横並び) -->
-    <div id="start-screen" class="flex-1 flex flex-col md:flex-row p-3 md:p-6 z-10 gap-3 md:gap-4 overflow-hidden">
-      
-      <!-- 【左側：カテゴリ選択タブ＆累積星ポイントゲージ】 -->
-      <div class="w-full md:w-1/3 flex flex-row md:flex-col justify-between bg-white bg-opacity-90 p-2.5 md:p-4 rounded-[20px] md:rounded-[28px] border-4 border-sky-200 shadow-md gap-2 shrink-0">
-        <div class="flex md:flex-col items-center md:items-stretch justify-between md:justify-start gap-2 w-full">
-          <!-- タイトル（スマホ時はスペース節約のため非表示に） -->
-          <h2 class="hidden md:block text-lg md:text-xl text-sky-800 font-black text-center mb-3 border-b-4 border-sky-100 pb-2">
-            🎈 なにであそぶ？
-          </h2>
-          
-          <div class="flex flex-row md:flex-col gap-1.5 md:gap-3 w-full">
-            <!-- すうじボタン -->
-            <button onclick="changeCategory('number')" id="cat-btn-number" class="category-btn flex-1 md:w-full py-2 md:py-3.5 px-2 md:px-4 bg-amber-400 text-white text-xs sm:text-sm md:text-lg lg:text-xl font-black rounded-xl md:rounded-2xl border-b-4 md:border-b-8 border-amber-600 transition-all flex flex-col md:flex-row items-center gap-1 md:gap-2 justify-center">
-              <span class="text-lg md:text-2xl">🔢</span>
-              <span>すうじ</span>
-            </button>
-            <!-- ひらがなボタン -->
-            <button onclick="changeCategory('hiragana')" id="cat-btn-hiragana" class="category-btn flex-1 md:w-full py-2 md:py-3.5 px-2 md:px-4 bg-rose-400 text-white text-xs sm:text-sm md:text-lg lg:text-xl font-black rounded-xl md:rounded-2xl border-b-4 md:border-b-8 border-rose-600 transition-all flex flex-col md:flex-row items-center gap-1 md:gap-2 justify-center">
-              <span class="text-lg md:text-2xl">🍎</span>
-              <span>ひらがな</span>
-            </button>
-            <!-- カタカナボタン -->
-            <button onclick="changeCategory('katakana')" id="cat-btn-katakana" class="category-btn flex-1 md:w-full py-2 md:py-3.5 px-2 md:px-4 bg-emerald-400 text-white text-xs sm:text-sm md:text-lg lg:text-xl font-black rounded-xl md:rounded-2xl border-b-4 md:border-b-8 border-emerald-600 transition-all flex flex-col md:flex-row items-center gap-1 md:gap-2 justify-center">
-              <span class="text-lg md:text-2xl">🍊</span>
-              <span>カタカナ</span>
-            </button>
-            <!-- アルファベットボタン -->
-            <button onclick="changeCategory('alphabet')" id="cat-btn-alphabet" class="category-btn flex-1 md:w-full py-2 md:py-3.5 px-2 md:px-4 bg-indigo-400 text-white text-xs sm:text-sm md:text-lg lg:text-xl font-black rounded-xl md:rounded-2xl border-b-4 md:border-b-8 border-indigo-600 transition-all flex flex-col md:flex-row items-center gap-1 md:gap-2 justify-center">
-              <span class="text-lg md:text-2xl">🔤</span>
-              <span>えいご</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 【24時間累積ポイント表示ボード（/ 10 の表示をなくしそのまま累積されるように変更）】 -->
-        <div id="point-board" class="flex flex-row md:flex-col items-center justify-between md:justify-center p-2 md:p-3 bg-amber-50 rounded-2xl border-2 border-amber-300 gap-2 w-full transition-all duration-500">
-          <div class="text-left md:text-center shrink-0">
-            <span class="text-amber-700 font-extrabold text-[10px] md:text-xs block">🌟 24じかんのポイント</span>
-            <div class="flex items-baseline justify-start md:justify-center gap-1">
-              <span id="cumulative-points-text" class="text-2xl md:text-4xl font-black text-orange-500">0</span>
-              <span class="text-gray-500 font-black text-xs md:text-sm">てん</span>
+    <!-- コンパクト＆展開式ヘッダー -->
+    <header id="main-header" class="header-collapsed absolute top-16 left-4 h-auto md:h-14 bg-white/95 backdrop-blur shadow-2xl rounded-2xl flex flex-col md:flex-row items-center overflow-hidden z-[1000] border border-white/20 p-1.5 transition-all duration-300">
+        
+        <div class="flex items-center gap-2 shrink-0 w-full md:w-auto px-1 py-1 cursor-pointer hover:bg-gray-50 rounded-xl transition-colors" id="header-toggle">
+            <div id="map-logo" class="bg-blue-600 p-2 rounded-xl shadow-md shrink-0">
+                <svg id="logo-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                </svg>
             </div>
-          </div>
-          <!-- 10個の星ゲージ：5個×2行の綺麗で絶対崩れない配置 -->
-          <div id="star-gauge" class="grid grid-cols-5 gap-1 text-md md:text-lg justify-items-center items-center shrink-0">
-            <!-- JSで動的に星マークが入ります -->
-          </div>
-        </div>
-
-        <!-- 音設定＆リセットボタンをコンパクトに1行で共有 -->
-        <div class="hidden sm:flex flex-row items-center justify-between mt-1 md:mt-2 pt-1 md:pt-2 border-t border-gray-100 shrink-0 w-full gap-2">
-          <!-- 音ON / OFFボタン -->
-          <button onclick="toggleMute()" id="mute-btn" class="flex-1 bg-sky-100 hover:bg-sky-200 text-sky-700 font-black py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-all">
-            <span>🔊 ON</span>
-          </button>
-          <!-- ポイントクリアボタン -->
-          <button onclick="confirmResetPoints()" id="reset-points-btn" class="flex-1 bg-rose-100 hover:bg-rose-200 text-rose-700 font-black py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-all">
-            <span>🧹 クリア</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 【右側・下側：えらんだ難易度（レベル）リスト】 -->
-      <div class="flex-1 w-full flex flex-col justify-between bg-white bg-opacity-95 p-3 md:p-6 rounded-[20px] md:rounded-[28px] border-4 border-amber-300 shadow-md overflow-hidden">
-        
-        <div class="text-center mb-1.5 md:mb-4">
-          <h1 id="main-title" class="text-xl sm:text-2xl md:text-4xl text-amber-500 font-black tracking-wider drop-shadow-sm">
-            すうじ タッチ！
-          </h1>
-          <p id="main-subtitle" class="text-gray-500 text-xs md:text-sm font-bold mt-0.5">
-            じゅんばんに タップしよう！
-          </p>
-        </div>
-
-        <!-- 動的に切り替わるレベル選択ボタンのコンテナ (スクロール対応) -->
-        <div id="level-list-container" class="flex-1 flex flex-col justify-center gap-2.5 md:gap-4 py-2 overflow-y-auto pr-1">
-          <!-- JSで自動挿入されます -->
-        </div>
-
-        <div class="text-center text-[10px] md:text-xs text-gray-400 font-bold mt-2">
-          ※ボタンをタップすると すぐに スタートするよ！
-        </div>
-      </div>
-
-    </div>
-
-    <!-- 2. ゲームプレイ画面 (非表示から開始) -->
-    <div id="game-screen" class="hidden flex-1 flex flex-col justify-between p-2 md:p-3 relative z-10">
-      
-      <!-- ヘッダー情報 -->
-      <div class="flex items-center justify-between bg-sky-100 bg-opacity-90 p-2 md:p-3 rounded-2xl border-2 md:border-4 border-white shadow-md">
-        <!-- もどるボタン -->
-        <button onclick="showStartScreen()" class="bg-amber-500 hover:bg-amber-400 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl font-bold text-xs md:text-sm shadow-md active:translate-y-0.5 shrink-0">
-          🔙 もどる
-        </button>
-
-        <!-- ターゲット表示 (次の文字・数字) -->
-        <div class="text-center flex-1 mx-2">
-          <span class="text-gray-500 text-[10px] md:text-xs font-bold block">つぎに タップする もじ</span>
-          <div class="flex justify-center items-center gap-1">
-            <!-- 拗音（2文字）の時に絶対折り返されないよう relative 属性を付与 -->
-            <span id="next-number-target" class="relative inline-block font-black text-rose-500 animate-bounce">1</span>
-            <span class="text-gray-700 text-xs md:text-lg font-black shrink-0">を タップ！</span>
-          </div>
-        </div>
-
-        <!-- 現在のステージ名 -->
-        <div class="bg-sky-600 text-white px-2.5 py-1 md:px-3 md:py-1.5 rounded-xl text-center shrink-0">
-          <div class="text-[8px] md:text-[9px] opacity-90 font-bold">ステージ</div>
-          <div id="game-mode-label" class="text-[10px] md:text-sm font-black truncate max-w-[80px] md:max-w-[120px]">1〜5</div>
-        </div>
-      </div>
-
-      <!-- タイマーゲージ -->
-      <div class="mt-1.5 bg-white bg-opacity-80 p-1 rounded-full border border-white flex items-center gap-1.5">
-        <span class="text-[10px] md:text-xs font-black text-sky-700 shrink-0 ml-1">⏰ じかん</span>
-        <div class="w-full bg-sky-200 h-3.5 md:h-5 rounded-full overflow-hidden">
-          <div id="timer-bar" class="bg-rose-500 h-full w-full rounded-full transition-all duration-100 ease-linear"></div>
-        </div>
-      </div>
-
-      <!-- プレイススペース（白板） -->
-      <div id="play-area" class="flex-1 bg-white rounded-[20px] md:rounded-[24px] border-2 md:border-4 border-white shadow-inner my-2 relative overflow-hidden">
-        <!-- 数字・文字たちがここに配置されます -->
-      </div>
-    </div>
-
-    <!-- 3. リザルト画面 (クリア・タイムアップ) -->
-    <div id="result-screen" class="hidden flex-1 flex flex-col items-center justify-center p-4 md:p-6 z-10 text-center overflow-y-auto">
-      <div id="result-emoji" class="text-6xl md:text-8xl mb-3 animate-bounce">🎉</div>
-      <h2 id="result-title" class="text-3xl md:text-4xl text-white font-black mb-1.5 drop-shadow-md">できたー！</h2>
-      <p id="result-sub" class="text-white text-sm md:text-lg mb-4 bg-sky-800 bg-opacity-40 px-5 py-1.5 rounded-full inline-block">
-        よくがんばったね！
-      </p>
-
-      <!-- スコアボード（獲得ポイントの内訳メーター） -->
-      <div class="bg-white p-4 md:p-6 rounded-3xl shadow-xl border-4 border-amber-300 w-full max-sm mb-6 flex flex-col gap-3">
-        
-        <!-- 【タイム表示エリア】 -->
-        <div class="flex flex-col gap-1 text-sm md:text-base border-b border-dashed border-gray-200 pb-2 text-gray-700 font-bold">
-          <div class="flex justify-between items-center">
-            <span>⏱️ かかったじかん</span>
-            <span id="result-time" class="text-orange-500 font-black">00.0びょう</span>
-          </div>
-          <div class="flex justify-between items-center">
-            <span>⏰ のこりじかん</span>
-            <span><span id="result-remaining" class="text-sky-600 font-black">0</span>びょう</span>
-          </div>
-        </div>
-
-        <div class="text-gray-400 font-bold text-xs md:text-sm text-left">🎁 もらえた ポイント</div>
-        
-        <!-- 得点詳細リスト -->
-        <div class="flex flex-col gap-1 text-sm md:text-base border-b border-dashed border-gray-200 pb-2 text-gray-700 font-bold">
-          <div class="flex justify-between">
-            <span>🎈 グループ of てんすう</span>
-            <span id="detail-cat-point">+0</span>
-          </div>
-          <div class="flex justify-between">
-            <span>🚀 レベル of てんすう</span>
-            <span id="detail-lvl-point">+0</span>
-          </div>
-          <div class="flex justify-between text-rose-500">
-            <span>😢 まちがえた（げんてん）</span>
-            <span id="detail-miss-point">-0</span>
-          </div>
-        </div>
-
-        <!-- 最終獲得点数 -->
-        <div class="flex items-center justify-between px-2">
-          <span class="text-amber-700 font-extrabold text-md md:text-lg">✨ 今回のゲット</span>
-          <div class="flex items-baseline gap-1">
-            <span id="result-earned-points" class="text-4xl md:text-5xl font-black text-orange-500 animate-bounce">0</span>
-            <span class="text-gray-500 text-sm font-black">てん</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="flex flex-col gap-3 w-full max-w-xs shrink-0">
-        <!-- プレイ制限条件達成時だけ隠せるようにします -->
-        <button id="replay-btn" onclick="startGame()" class="bg-emerald-500 hover:bg-emerald-400 text-white text-xl font-black py-3.5 px-6 rounded-2xl btn-shadow-green transition-all">
-          もういっかい！
-        </button>
-        <button onclick="showStartScreen()" class="bg-sky-100 hover:bg-sky-200 text-sky-700 text-md font-bold py-2.5 px-6 rounded-2xl transition-all">
-          メニューにもどる
-        </button>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- キラキラエフェクトや紙吹雪用のキャンバス -->
-  <canvas id="effect-canvas" class="absolute inset-0 pointer-events-none z-50"></canvas>
-
-  <script>
-    // --- カテゴリ＆難易度用文字データベース ---
-    const hiraganaRows = [
-      ['あ', 'い', 'う', 'え', 'お'],
-      ['か', 'き', 'く', 'け', 'こ'],
-      ['さ', 'し', 'す', 'せ', 'そ'],
-      ['た', 'ち', 'つ', 'て', 'と'],
-      ['な', 'に', 'ぬ', 'ね', 'の'],
-      ['は', 'ひ', 'ふ', 'へ', 'ほ'],
-      ['ま', 'み', 'む', 'め', 'も'],
-      ['や', 'ゆ', 'よ'],
-      ['ら', 'り', 'る', 'れ', 'ろ'],
-      ['わ', 'を', 'ん']
-    ];
-
-    const hiraganaVowels = [
-      ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'], // あだん
-      ['い', 'き', 'し', 'ち', 'に', 'ひ', 'み', 'り'],             // いだん
-      ['う', 'く', 'す', 'つ', 'ぬ', 'ふ', 'む', 'ゆ', 'る'],       // うだん
-      ['え', 'け', 'せ', 'て', 'ね', 'へ', 'め', 'れ'],             // えだん
-      ['お', 'こ', 'そ', 'と', 'の', 'ほ', 'も', 'よ', 'ろ', 'を']  // おだん
-    ];
-
-    // ひらがな濁音、半濁音、および拗音
-    const hiraganaDakuRows = [
-      ['が', 'ぎ', 'ぐ', 'げ', 'ご'],
-      ['ざ', 'じ', 'ず', 'ぜ', 'ぞ'],
-      ['だ', 'ぢ', 'づ', 'で', 'ど'],
-      ['ば', 'び', 'ぶ', 'べ', 'ぼ'],
-      ['ぱ', 'ぴ', 'ぷ', 'ぺ', 'ぽ']
-    ];
-
-    const hiraganaYouRows = [
-      ['きゃ', 'きゅ', 'きょ'],
-      ['しゃ', 'しゅ', 'しょ'],
-      ['ちゃ', 'ちゅ', 'ちょ'],
-      ['にゃ', 'にゅ', 'にょ'],
-      ['ひゃ', 'ひゅ', 'ひょ'],
-      ['みゃ', 'みゅ', 'みょ'],
-      ['りゃ', 'りゅ', 'りょ'],
-      ['ぎゃ', 'ぎゅ', 'ぎょ'],
-      ['じゃ', 'じゅ', 'じょ'],
-      ['びゃ', 'びゅ', 'びょ'],
-      ['ぴゃ', 'ぴゅ', 'ぴょ']
-    ];
-
-    const katakanaRows = [
-      ['ア', 'イ', 'ウ', 'エ', 'オ'],
-      ['カ', 'キ', 'ク', 'ケ', 'コ'],
-      ['サ', 'シ', 'ス', 'セ', 'ソ'],
-      ['タ', 'チ', 'ツ', 'テ', 'ト'],
-      ['ナ', 'ニ', 'ヌ', 'ネ', 'ノ'],
-      ['ハ', 'ヒ', 'フ', 'ヘ', 'ホ'],
-      ['マ', 'ミ', 'ム', 'メ', 'モ'],
-      ['ヤ', 'ユ', 'ヨ'],
-      ['ラ', 'リ', 'ル', 'レ', 'ロ'],
-      ['ワ', 'ヲ', 'ン']
-    ];
-
-    // カタカナ母音
-    const katakanaVowels = [
-      ['ア', 'カ', 'サ', 'タ', 'ナ', 'ハ', 'マ', 'ヤ', 'ラ', 'ワ'], // アダン
-      ['イ', 'キ', 'シ', 'チ', 'ニ', 'ヒ', 'ミ', 'リ'],             // イダン
-      ['ウ', 'ク', 'ス', 'ツ', 'ヌ', 'フ', 'ム', 'ユ', 'ル'],       // ウダン
-      ['エ', 'ケ', 'セ', 'テ', 'ネ', 'ヘ', 'メ', 'レ'],             // エダン
-      ['オ', 'コ', 'ソ', 'ト', 'ノ', 'ホ', 'モ', 'ヨ', 'ロ', 'ヲ']  // オダン
-    ];
-
-    // カタカナ濁音、半濁音、および拗音
-    const katakanaDakuRows = [
-      ['ガ', 'ギ', 'グ', 'ゲ', 'ゴ'],
-      ['ザ', 'ジ', 'ズ', 'ゼ', 'ゾ'],
-      ['ダ', 'ヂ', 'ヅ', 'デ', 'ド'],
-      ['バ', 'ビ', 'ブ', 'ベ', 'ボ'],
-      ['パ', 'ピ', 'プ', 'ペ', 'ポ']
-    ];
-
-    const katakanaYouRows = [
-      ['キャ', 'キュ', 'キョ'],
-      ['シャ', 'シュ', 'ショ'],
-      ['チャ', 'チュ', 'チョ'],
-      ['ニャ', 'ニュ', 'ニョ'],
-      ['ヒャ', 'ヒュ', 'ヒョ'],
-      ['ミャ', 'ミュ', 'ミョ'],
-      ['リャ', 'リュ', 'リョ'],
-      ['ギャ', 'ギュ', 'ギョ'],
-      ['ジャ', 'ジュ', 'ジョ'],
-      ['ビャ', 'ビュ', 'ビョ'],
-      ['ピャ', 'ピュ', 'ピョ']
-    ];
-
-    const alphabetData = {
-      'caps_easy': ['A', 'B', 'C', 'D', 'E', 'F', 'G'],
-      'caps_medium': ['H', 'I', 'J', 'K', 'L', 'M', 'N'],
-      'caps_hard': ['O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'],
-      'small_easy': ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
-      'small_medium': ['h', 'i', 'j', 'k', 'l', 'm', 'n'],
-      'small_hard': ['o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
-    };
-
-    // --- ゲーム設定と現在の状態 ---
-    let currentCategory = 'number'; // 'number' | 'hiragana' | 'katakana' | 'alphabet'
-    let currentLevelData = [];      // 実際にゲームで使う文字・数字の配列
-    let nextToTapIndex = 0;         // 次にタップするべき文字のインデックス番号
-    let timerMax = 60;              // 制限時間(秒)
-    let timeLeft = 60;
-    let timerInterval = null;
-    let startTime = null;
-    let gameActive = false;
-    let isMuted = false;
-    let selectedModeLabel = "";     // 現在遊んでいるモード名
-
-    // --- 得点・ポイントシステム用変数 ---
-    let currentGameCategoryPoints = 0;
-    let currentGameLevelPoints = 0;
-    let currentGameMissCount = 0;
-    
-    // 過去24時間の獲得ポイント履歴
-    // 拡張形式：[{timestamp, points, category, levelKey, isFullMark}]
-    let pointHistory = [];          
-
-    // --- リセットボタン用確認フラグ & タイマー ---
-    let resetTimer = null;
-    let isResetConfirming = false;
-
-    // --- 7点以上の「耳すましモード用」タイマー変数 ---
-    let hintTimer = null;
-
-    // --- Firebase初期化とセキュリティ・防衛ルール設定 ---
-    let db = null;
-    let auth = null;
-    let appId = 'default-app-id';
-
-    // カラフルな数字・文字用のカラーパレット
-    const colorPalette = [
-      { text: '#e11d48', bg: '#ffe4e6' }, // ローズ
-      { text: '#1e3a8a', bg: '#dbeafe' }, // ダークブルー
-      { text: '#16a34a', bg: '#dcfce7' }, // グリーン
-      { text: '#ea580c', bg: '#ffedd5' }, // オレンジ
-      { text: '#9333ea', bg: '#f3e8ff' }, // パープル
-      { text: '#0891b2', bg: '#ecfeff' }, // シアン
-      { text: '#ca8a04', bg: '#fef9c3' }, // イエローゴールド
-      { text: '#db2777', bg: '#fce7f3' }, // ピンク
-      { text: '#4f46e5', bg: '#e0e7ff' }, // インディゴ
-    ];
-
-    // --- 音声生成 (Web Audio API) ---
-    let audioCtx = null;
-
-    function initAudioContext() {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-    }
-
-    function playSound(type) {
-      if (isMuted) return;
-      
-      try {
-        initAudioContext();
-      } catch (e) {
-        console.log('Web Audio API is not supported or allowed:', e);
-        return;
-      }
-
-      try {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-
-        const now = audioCtx.currentTime;
-
-        if (type === 'correct') {
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(523.25, now);
-          osc.frequency.setValueAtTime(659.25, now + 0.05);
-          osc.frequency.setValueAtTime(783.99, now + 0.1);
-          osc.frequency.setValueAtTime(1046.50, now + 0.15);
-          gain.gain.setValueAtTime(0.15, now);
-          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-          osc.start(now);
-          osc.stop(now + 0.3);
-        } else if (type === 'wrong') {
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(145, now); // 低音
-          
-          gain.gain.setValueAtTime(0, now);
-          gain.gain.linearRampToValueAtTime(0.28, now + 0.02);
-          gain.gain.setValueAtTime(0.28, now + 0.07);
-          gain.gain.linearRampToValueAtTime(0, now + 0.09);
-          gain.gain.linearRampToValueAtTime(0.28, now + 0.12);
-          gain.gain.setValueAtTime(0.28, now + 0.20);
-          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
-          
-          osc.start(now);
-          osc.stop(now + 0.30);
-        } else if (type === 'clear') {
-          const notes = [523.25, 659.25, 783.99, 1046.50];
-          notes.forEach((freq, idx) => {
-            const o = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
-            o.connect(g);
-            g.connect(audioCtx.destination);
-            o.type = 'sine';
-            o.frequency.value = freq;
-            const noteStart = now + idx * 0.12;
-            g.gain.setValueAtTime(0, now);
-            g.gain.setValueAtTime(0.2, noteStart);
-            g.gain.exponentialRampToValueAtTime(0.01, noteStart + 0.6);
-            o.start(noteStart);
-            o.stop(noteStart + 0.6);
-          });
-        } else if (type === 'timeup') {
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(400, now);
-          osc.frequency.linearRampToValueAtTime(200, now + 0.8);
-          gain.gain.setValueAtTime(0.3, now);
-          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
-          osc.start(now);
-          osc.stop(now + 0.8);
-        }
-      } catch (e) {
-        console.log('Audio Error:', e);
-      }
-    }
-
-    // --- 音声読み上げ機能 (Web Speech API) ---
-    function playSpeech(text) {
-      if (isMuted) return;
-      try {
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-
-          let speechText = text.toString();
-          const isAlphabet = /^[a-zA-Z]$/.test(speechText);
-          
-          if (isAlphabet) {
-            speechText = speechText.toLowerCase();
-          }
-
-          const utterance = new SpeechSynthesisUtterance(speechText);
-
-          if (isAlphabet) {
-            utterance.lang = 'en-US'; // 英語発音
-            utterance.rate = 0.95;
-          } else {
-            utterance.lang = 'ja-JP'; // 日本語発音 (数字、ひらがな、カタカナ)
-            utterance.rate = 1.15;
-          }
-
-          window.speechSynthesis.speak(utterance);
-        }
-      } catch (e) {
-        console.log('Speech error:', e);
-      }
-    }
-
-    function toggleMute() {
-      isMuted = !isMuted;
-      const btn = document.getElementById('mute-btn');
-      if (isMuted) {
-        btn.innerHTML = '<span>🔇 OFF</span>';
-        btn.className = 'w-full bg-gray-200 text-gray-700 font-black py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-all';
-      } else {
-        btn.innerHTML = '<span>🔊 ON</span>';
-        btn.className = 'w-full bg-sky-100 hover:bg-sky-200 text-sky-700 font-black py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-all';
-        
-        try {
-          initAudioContext();
-        } catch (e) {
-          console.log('Web Audio API is not supported or allowed:', e);
-        }
-        
-        playSound('correct');
-        setTimeout(() => playSpeech('おとおん'), 350);
-      }
-    }
-
-    // --- 累積ポイントリセットの確認 & 2段階リセット処理 ---
-    function confirmResetPoints() {
-      const btn = document.getElementById('reset-points-btn');
-      if (!isResetConfirming) {
-        isResetConfirming = true;
-        btn.innerHTML = '<span>🧹 ほんと？</span>';
-        btn.className = 'w-full bg-amber-200 hover:bg-amber-300 text-amber-800 font-black py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-all';
-        playSpeech('ポイントをゼロにしますか？');
-        
-        resetTimer = setTimeout(() => {
-          resetResetButton();
-        }, 3000);
-      } else {
-        clearTimeout(resetTimer);
-        executeResetPoints();
-      }
-    }
-
-    function resetResetButton() {
-      isResetConfirming = false;
-      const btn = document.getElementById('reset-points-btn');
-      if (btn) {
-        btn.innerHTML = '<span>🧹 クリア</span>';
-        btn.className = 'w-full bg-rose-100 hover:bg-rose-200 text-rose-700 font-black py-2 rounded-xl text-xs flex items-center justify-center gap-1 transition-all';
-      }
-    }
-
-    async function executeResetPoints() {
-      pointHistory = [];
-      updatePointsUI();
-      resetResetButton();
-      playSpeech('リセットしました！');
-      playSound('wrong'); // リセット用のしょんぼりSE
-
-      // Firestore上の累積データも空にして同期
-      if (db && auth && auth.currentUser) {
-        try {
-          const { doc, setDoc } = window.FirebaseSDK;
-          const docRef = doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'points', 'history');
-          await setDoc(docRef, { history: [] });
-        } catch (e) {
-          console.error("Firestore reset error:", e);
-        }
-      }
-    }
-
-    // --- 背景シャボン玉の生成 ---
-    function initBubbles() {
-      const container = document.getElementById('bubble-container');
-      if (!container) return;
-      container.innerHTML = '';
-      for (let i = 0; i < 15; i++) {
-        const b = document.createElement('div');
-        b.className = 'bubble';
-        const size = Math.random() * 40 + 20;
-        b.style.width = `${size}px`;
-        b.style.height = `${size}px`;
-        b.style.left = `${Math.random() * 100}%`;
-        b.style.animationDuration = `${Math.random() * 8 + 8}s`;
-        b.style.animationDelay = `${Math.random() * -10}s`;
-        container.appendChild(b);
-      }
-    }
-
-    // --- カテゴリ切り替え（左サイドバー / 上部タブ） ---
-    function changeCategory(cat) {
-      currentCategory = cat;
-
-      document.querySelectorAll('.category-btn').forEach(btn => {
-        btn.classList.add('opacity-50', 'scale-95');
-        btn.classList.remove('ring-4', 'ring-white', 'md:ring-4');
-      });
-
-      const activeBtn = document.getElementById(`cat-btn-${cat}`);
-      if (activeBtn) {
-        activeBtn.classList.remove('opacity-50', 'scale-95');
-        activeBtn.classList.add('ring-4', 'ring-white');
-      }
-
-      renderLevels();
-      
-      // ユーザーの操作によるものなので、安全に再生可能
-      playSound('correct');
-    }
-
-    // --- 各難易度（レベル）を識別するための文字列変換 ---
-    function getLevelKey(label, category) {
-      if (category === 'number') {
-        if (label.includes('1〜5')) return 'num_5';
-        if (label.includes('1〜10')) return 'num_10';
-        if (label.includes('1〜15')) return 'num_15';
-      } else if (category === 'hiragana') {
-        if (label.includes('だくおん') || label.includes('ようおん') || label.includes('daku_yo')) return 'hira_hard';
-        if (label.includes('ぼいん') || label.includes('だん') || label.includes('vowel')) return 'hira_medium';
-        return 'hira_easy';
-      } else if (category === 'katakana') {
-        if (label.includes('ダクオン') || label.includes('ヨウオン') || label.includes('daku_yo')) return 'kata_hard';
-        if (label.includes('ボイン') || label.includes('ダン') || label.includes('vowel')) return 'kata_medium';
-        return 'kata_easy';
-      } else if (category === 'alphabet') {
-        return 'alpha';
-      }
-      return '';
-    }
-
-    // --- 過去24時間以内にそのレベルで「満点クリア（ノーミス）」した回数をカウントする関数 ---
-    function getFullMarkCount(category, levelKey) {
-      cleanOldPoints();
-      return pointHistory.filter(item => 
-        item.category === category && 
-        item.levelKey === levelKey && 
-        item.isFullMark === true
-      ).length;
-    }
-
-    // --- 選択されたカテゴリに応じたレベルリストの描画 ---
-    // 改良：累積が「6点以上」かつ「10点未満（クリア前）」の時だけロック制限が発動
-    // 10点以上（10点をクリア）になったら、非表示になっていたレベルはすべて再び自由にプレイ出来るように表示されます
-    function renderLevels() {
-      const container = document.getElementById('level-list-container');
-      const title = document.getElementById('main-title');
-      const subtitle = document.getElementById('main-subtitle');
-      container.innerHTML = '';
-
-      const currentPoints = getCumulativePoints();
-      // 累積ポイントが「6点以上」かつ「10点未満」のときのみ、満点クリア2回の制限（ロック）を有効化
-      const isLimitActive = (currentPoints >= 6 && currentPoints < 10); 
-
-      let availableCount = 0; // メニューに表示可能なレベル数をカウント
-
-      if (currentCategory === 'number') {
-        title.textContent = 'すうじ タッチ！';
-        subtitle.textContent = 'すうじを 1から じゅんばんに タップしよう！';
-
-        let html = '';
-        if (!(isLimitActive && getFullMarkCount('number', 'num_5') >= 2)) {
-          html += `
-            <button onclick="startSpecificGame([1,2,3,4,5], 'すうじ 1〜5', 40)" class="w-full bg-amber-400 hover:bg-amber-500 text-white text-md sm:text-lg md:text-2xl font-black py-3 md:py-4 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-amber-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span>⭐️ はじめて (1 〜 5)</span>
-              <span class="bg-white text-amber-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">かんたん +1</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        if (!(isLimitActive && getFullMarkCount('number', 'num_10') >= 2)) {
-          html += `
-            <button onclick="startSpecificGame([1,2,3,4,5,6,7,8,9,10], 'すうじ 1〜10', 60)" class="w-full bg-emerald-400 hover:bg-emerald-500 text-white text-md sm:text-lg md:text-2xl font-black py-3 md:py-4 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-emerald-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span>🔥 がんばる (1 〜 10)</span>
-              <span class="bg-white text-emerald-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">ふつう +2</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        if (!(isLimitActive && getFullMarkCount('number', 'num_15') >= 2)) {
-          html += `
-            <button onclick="startSpecificGame([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15], 'すうじ 1〜15', 90)" class="w-full bg-indigo-400 hover:bg-indigo-500 text-white text-md sm:text-lg md:text-2xl font-black py-3 md:py-4 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-indigo-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span>🚀 チャレンジ (1 〜 15)</span>
-              <span class="bg-white text-indigo-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">むずかしい +3</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        container.innerHTML = html;
-      } 
-      else if (currentCategory === 'hiragana') {
-        title.textContent = 'ひらがな タッチ！';
-        subtitle.textContent = 'ひらがなを「あ・い・う...」のじゅんで タップしよう！';
-
-        let html = '';
-        if (!(isLimitActive && getFullMarkCount('hiragana', 'hira_easy') >= 2)) {
-          html += `
-            <button onclick="startRandomGroupGame('hiragana_row', 5, 45)" class="w-full bg-rose-400 hover:bg-rose-500 text-white text-md sm:text-lg md:text-2xl font-black py-4 md:py-5 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-rose-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span class="text-left">⭐️ ランダム 5もじ<br class="md:hidden"><span class="text-xs sm:text-sm md:text-lg opacity-90">(あいうえお など)</span></span>
-              <span class="bg-white text-rose-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">かんたん +2</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        if (!(isLimitActive && getFullMarkCount('hiragana', 'hira_medium') >= 2)) {
-          html += `
-            <button onclick="startRandomGroupGame('hiragana_vowel', 10, 75)" class="w-full bg-purple-400 hover:bg-purple-500 text-white text-md sm:text-lg md:text-2xl font-black py-4 md:py-5 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-purple-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span class="text-left">🚀 ぼいん 10もじ<br class="md:hidden"><span class="text-xs sm:text-sm md:text-lg opacity-90">(あかさたな... など)</span></span>
-              <span class="bg-white text-purple-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">むずかしい +3</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        if (!(isLimitActive && getFullMarkCount('hiragana', 'hira_hard') >= 2)) {
-          html += `
-            <button onclick="startRandomGroupGame('hiragana_daku_yo', 5, 60)" class="w-full bg-indigo-400 hover:bg-indigo-500 text-white text-md sm:text-lg md:text-2xl font-black py-4 md:py-5 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-indigo-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span class="text-left">🔥 だくおん・ようおん<br class="md:hidden"><span class="text-xs sm:text-sm md:text-lg opacity-90">(がぎぐげご / きゃきゅきょ など)</span></span>
-              <span class="bg-white text-indigo-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">チャレンジ +2</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        container.innerHTML = html;
-      } 
-      else if (currentCategory === 'katakana') {
-        title.textContent = 'カタカナ タッチ！';
-        subtitle.textContent = 'カタカナを「ア・イ・ウ...」のじゅんで タップしよう！';
-
-        let html = '';
-        if (!(isLimitActive && getFullMarkCount('katakana', 'kata_easy') >= 2)) {
-          html += `
-            <button onclick="startRandomGroupGame('katakana_row', 5, 45)" class="w-full bg-emerald-400 hover:bg-emerald-500 text-white text-md sm:text-lg md:text-2xl font-black py-3 md:py-4 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-emerald-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span class="text-left">⭐️ ランダム 5もじ<br class="md:hidden"><span class="text-xs sm:text-sm md:text-lg opacity-90">(アイウエオ など)</span></span>
-              <span class="bg-white text-emerald-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">かんたん +3</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        if (!(isLimitActive && getFullMarkCount('katakana', 'kata_medium') >= 2)) {
-          html += `
-            <button onclick="startRandomGroupGame('katakana_vowel', 10, 75)" class="w-full bg-indigo-400 hover:bg-indigo-500 text-white text-md sm:text-lg md:text-2xl font-black py-3 md:py-4 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-indigo-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span class="text-left">🚀 ボイン 10もじ<br class="md:hidden"><span class="text-xs sm:text-sm md:text-lg opacity-90">(アカサタナ... など)</span></span>
-              <span class="bg-white text-indigo-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">むずかしい +4</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        if (!(isLimitActive && getFullMarkCount('katakana', 'kata_hard') >= 2)) {
-          html += `
-            <button onclick="startRandomGroupGame('katakana_daku_yo', 5, 60)" class="w-full bg-rose-400 hover:bg-rose-500 text-white text-md sm:text-lg md:text-2xl font-black py-3 md:py-4 px-4 md:px-6 rounded-2xl border-b-4 md:border-b-8 border-rose-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex items-center justify-between">
-              <span class="text-left">🔥 ダクオン・ヨウオン<br class="md:hidden"><span class="text-xs sm:text-sm md:text-lg opacity-90">(ガギグゲゴ / キャキュキョ など)</span></span>
-              <span class="bg-white text-rose-600 px-2.5 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs font-bold shrink-0 ml-2">チャレンジ +3</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        container.innerHTML = html;
-      } 
-      else if (currentCategory === 'alphabet') {
-        title.textContent = 'えいご タッチ！';
-        subtitle.textContent = 'アルファベットを A からじゅんばんに タップしよう！';
-
-        let html = '';
-        if (!(isLimitActive && getFullMarkCount('alphabet', 'alpha') >= 2)) {
-          html += `
-            <button onclick="startRandomAlphabetGame()" class="w-full bg-indigo-400 hover:bg-indigo-500 text-white text-xl md:text-2xl font-black py-6 px-6 rounded-2xl border-b-4 md:border-b-8 border-indigo-600 active:translate-y-1 active:border-b-2 md:active:border-b-4 transition-all flex flex-col items-center justify-center gap-2">
-              <span class="flex items-center gap-2 text-2xl md:text-3xl">🚀 えいご スタート！</span>
-              <span class="bg-white text-indigo-600 px-3 py-0.5 rounded-full text-xs font-bold">一律 +3 てん (A〜Z / a〜z)</span>
-            </button>
-          `;
-          availableCount++;
-        }
-        container.innerHTML = html;
-      }
-
-      // 【知育の工夫】満点クリア制限によって、そのカテゴリーのゲームが全て非表示になった場合
-      if (availableCount === 0) {
-        container.innerHTML = `
-          <div class="flex flex-col items-center justify-center p-6 text-center gap-3">
-            <span class="text-5xl md:text-6xl animate-bounce block">🌟</span>
-            <p class="text-amber-600 font-extrabold text-lg md:text-xl leading-relaxed">
-              ぜんぶ 満点で クリアできたね！<br>
-              ほかの カテゴリーも 遊んでみよう！🔒✨
-            </p>
-            <p class="text-gray-400 font-bold text-xs">
-              (※24じかんの満点クリア上限に達しました)
-            </p>
-          </div>
-        `;
-      }
-    }
-
-    // --- 各カテゴリ内のレベル段のマッピング ---
-    function startRandomGroupGame(type, size, timeLimit) {
-      let selectedList = [];
-      let label = "";
-
-      if (type === 'hiragana_row') {
-        const randomRow = hiraganaRows[Math.floor(Math.random() * hiraganaRows.length)];
-        selectedList = [...randomRow];
-        label = `ひらがな ${selectedList[0]}〜${selectedList[selectedList.length-1]}`;
-      } 
-      else if (type === 'hiragana_vowel') {
-        const randomVowel = hiraganaVowels[Math.floor(Math.random() * hiraganaVowels.length)];
-        selectedList = [...randomVowel];
-        label = `ひらがな ${selectedList[0]}だん`;
-      } 
-      else if (type === 'hiragana_daku_yo') {
-        const useDaku = Math.random() < 0.5;
-        if (useDaku) {
-          const randomRow = hiraganaDakuRows[Math.floor(Math.random() * hiraganaDakuRows.length)];
-          selectedList = [...randomRow];
-          label = `ひらがな だくおん ${selectedList[0]}〜`;
-        } else {
-          const randomRow = hiraganaYouRows[Math.floor(Math.random() * hiraganaYouRows.length)];
-          selectedList = [...randomRow];
-          label = `ひらがな ようおん ${selectedList[0]}〜`;
-        }
-      }
-      else if (type === 'katakana_row') {
-        const randomRow = katakanaRows[Math.floor(Math.random() * katakanaRows.length)];
-        selectedList = [...randomRow];
-        label = `カタカナ ${selectedList[0]}〜${selectedList[selectedList.length-1]}`;
-      } 
-      else if (type === 'katakana_vowel') {
-        const randomVowel = katakanaVowels[Math.floor(Math.random() * katakanaVowels.length)];
-        selectedList = [...randomVowel];
-        label = `カタカナ ${selectedList[0]}ダン`;
-      }
-      else if (type === 'katakana_daku_yo') {
-        const useDaku = Math.random() < 0.5;
-        if (useDaku) {
-          const randomRow = katakanaDakuRows[Math.floor(Math.random() * katakanaDakuRows.length)];
-          selectedList = [...randomRow];
-          label = `カタカナ ダクオン ${selectedList[0]}〜`;
-        } else {
-          const randomRow = katakanaYouRows[Math.floor(Math.random() * katakanaYouRows.length)];
-          selectedList = [...randomRow];
-          label = `カタカナ ヨウオン ${selectedList[0]}〜`;
-        }
-      }
-
-      startSpecificGame(selectedList, label, timeLimit);
-    }
-
-    // --- アルファベットのランダムグループを選択してゲーム開始 ---
-    function startRandomAlphabetGame() {
-      const keys = ['caps_easy', 'small_easy', 'caps_medium', 'small_medium', 'caps_hard', 'small_hard'];
-      const randomKey = keys[Math.floor(Math.random() * keys.length)];
-      const list = alphabetData[randomKey];
-      
-      let label = "";
-      let timeLimit = 50;
-
-      if (randomKey === 'caps_easy') {
-        label = "えいご 大文字 A〜G";
-        timeLimit = 50;
-      } else if (randomKey === 'small_easy') {
-        label = "えいご 小文字 a〜g";
-        timeLimit = 50;
-      } else if (randomKey === 'caps_medium') {
-        label = "えいご 大文字 H〜N";
-        timeLimit = 50;
-      } else if (randomKey === 'small_medium') {
-        label = "えいご 小文字 h〜n";
-        timeLimit = 50;
-      } else if (randomKey === 'caps_hard') {
-        label = "えいご 大文字 O〜Z";
-        timeLimit = 80;
-      } else if (randomKey === 'small_hard') {
-        label = "えいご 小文字 o〜z";
-        timeLimit = 80;
-      }
-
-      startSpecificGame(list, label, timeLimit);
-    }
-
-    // --- ゲームの開始 (共通処理) ---
-    function startSpecificGame(list, label, timeLimit) {
-      currentLevelData = [...list];
-      selectedModeLabel = label;
-      timerMax = timeLimit;
-      timeLeft = timeLimit;
-
-      nextToTapIndex = 0;
-      gameActive = true;
-      startTime = Date.now();
-
-      calculateStageScores();
-
-      showGameScreen();
-
-      updateNextTargetUI(currentLevelData[nextToTapIndex]);
-      document.getElementById('game-mode-label').textContent = selectedModeLabel;
-
-      updateTimerUI();
-      setupGameBoard();
-
-      clearInterval(timerInterval);
-      timerInterval = setInterval(() => {
-        if (!gameActive) return;
-        timeLeft -= 0.1;
-        if (timeLeft <= 0) {
-          timeLeft = 0;
-          showResultScreen(false);
-        }
-        updateTimerUI();
-      }, 100);
-
-      playSound('correct');
-      // ゲーム開始時に、最初のターゲット文字を一度喋らせる
-      setTimeout(() => playSpeech(currentLevelData[0]), 400);
-    }
-
-    // --- 今回遊ぶ難易度とカテゴリの得点を計算 ---
-    function calculateStageScores() {
-      if (currentCategory === 'number') {
-        currentGameCategoryPoints = 0;
-      } else if (currentCategory === 'hiragana') {
-        currentGameCategoryPoints = 1;
-      } else if (currentCategory === 'katakana') {
-        currentGameCategoryPoints = 2;
-      } else if (currentCategory === 'alphabet') {
-        currentGameCategoryPoints = 3;
-      }
-
-      if (currentCategory === 'alphabet') {
-        currentGameLevelPoints = 0;
-      } else if (currentCategory === 'number') {
-        if (selectedModeLabel.includes('1〜5')) currentGameLevelPoints = 1;
-        else if (selectedModeLabel.includes('1〜10')) currentGameLevelPoints = 2;
-        else if (selectedModeLabel.includes('1〜15')) currentGameLevelPoints = 3;
-      } else {
-        if (selectedModeLabel.includes('だくおん') || selectedModeLabel.includes('ようおん') || selectedModeLabel.includes('ダクオン') || selectedModeLabel.includes('ヨウオン')) {
-          currentGameLevelPoints = 1; 
-        } else if (selectedModeLabel.includes('ランダム') || selectedModeLabel.includes('〜')) {
-          currentGameLevelPoints = 1;
-        } else {
-          currentGameLevelPoints = 2;
-        }
-      }
-
-      currentGameMissCount = 0;
-    }
-
-    // --- 画面表示制御 ---
-    function showStartScreen() {
-      gameActive = false;
-      clearInterval(timerInterval);
-      if (hintTimer) {
-        clearTimeout(hintTimer);
-        hintTimer = null;
-      }
-      document.getElementById('start-screen').classList.remove('hidden');
-      document.getElementById('game-screen').classList.add('hidden');
-      document.getElementById('result-screen').classList.add('hidden');
-      renderLevels();
-      updatePointsUI();
-    }
-
-    function showGameScreen() {
-      document.getElementById('start-screen').classList.add('hidden');
-      document.getElementById('game-screen').classList.remove('hidden');
-      document.getElementById('result-screen').classList.add('hidden');
-    }
-
-    function showResultScreen(isClear) {
-      gameActive = false;
-      clearInterval(timerInterval);
-      if (hintTimer) {
-        clearTimeout(hintTimer);
-        hintTimer = null;
-      }
-      document.getElementById('start-screen').classList.add('hidden');
-      document.getElementById('game-screen').classList.add('hidden');
-      document.getElementById('result-screen').classList.remove('hidden');
-
-      const emoji = document.getElementById('result-emoji');
-      const title = document.getElementById('result-title');
-      const sub = document.getElementById('result-sub');
-      const timeVal = document.getElementById('result-time');
-      const remainVal = document.getElementById('result-remaining');
-
-      if (isClear) {
-        const timeTaken = ((Date.now() - startTime) / 1000).toFixed(1);
-        emoji.textContent = '🎉';
-        title.textContent = 'できたーー！';
-        sub.textContent = 'ぜんぶみつけられたね！すごーい！';
-        timeVal.textContent = `${timeTaken}びょう`;
-        remainVal.textContent = Math.ceil(timeLeft);
-        
-        const baseScore = currentGameCategoryPoints + currentGameLevelPoints;
-        const earnedPoints = Math.max(0, baseScore - currentGameMissCount);
-
-        document.getElementById('detail-cat-point').textContent = `+${currentGameCategoryPoints}`;
-        document.getElementById('detail-lvl-point').textContent = `+${currentGameLevelPoints}`;
-        document.getElementById('detail-miss-point').textContent = `-${currentGameMissCount}`;
-        document.getElementById('result-earned-points').textContent = earnedPoints;
-
-        // 獲得ポイントを蓄積履歴に保存
-        addPointsToHistory(earnedPoints);
-
-        // クリア時のファンファーレ音
-        playSound('clear'); 
-        
-        startCelebration();
-        setTimeout(() => playSpeech('すごーい！'), 500);
-      } else {
-        emoji.textContent = '⏰';
-        title.textContent = 'タイムアップ！';
-        sub.textContent = 'つぎは もっと はやく できるかな？';
-        timeVal.textContent = 'おしまい';
-        remainVal.textContent = '0';
-
-        document.getElementById('detail-cat-point').textContent = `+0`;
-        document.getElementById('detail-lvl-point').textContent = `+0`;
-        document.getElementById('detail-miss-point').textContent = `-0`;
-        document.getElementById('result-earned-points').textContent = 0;
-
-        playSound('timeup');
-        setTimeout(() => playSpeech('おしまい！'), 500);
-      }
-
-      // 【新規改良】クリアした時点で「累積星ポイントが6点以上」かつ「10点未満」の制限範囲内かつ
-      // 「該当のレベルを過去24時間以内に満点クリアで2回以上達成」した状態なら、リザルトの「もういっかい！」ボタンを非表示にします。
-      // 10点以上（10点をクリアした）に到達した場合は、すべてのレベルが制限されることなく「もういっかい！」も表示されるようにします。
-      const currentLevelKey = getLevelKey(selectedModeLabel, currentCategory);
-      const replayBtn = document.getElementById('replay-btn');
-      if (replayBtn) {
-        const currentPoints = getCumulativePoints();
-        // 累積星ポイントが 6点以上、かつ 10点未満の時のみ制限が発動
-        const isLimitActive = (currentPoints >= 6 && currentPoints < 10);
-        if (isClear && isLimitActive && currentLevelKey && getFullMarkCount(currentCategory, currentLevelKey) >= 2) {
-          replayBtn.classList.add('hidden');
-        } else {
-          replayBtn.classList.remove('hidden');
-        }
-      }
-    }
-
-    // --- タイマーバー更新 ---
-    function updateTimerUI() {
-      const bar = document.getElementById('timer-bar');
-      if (!bar) return;
-      const percentage = (timeLeft / timerMax) * 100;
-      bar.style.width = `${percentage}%`;
-
-      if (percentage < 25) {
-        bar.className = 'bg-rose-600 h-full w-full rounded-full transition-all duration-100 ease-linear';
-      } else if (percentage < 50) {
-        bar.className = 'bg-amber-500 h-full w-full rounded-full transition-all duration-100 ease-linear';
-      } else {
-        bar.className = 'bg-emerald-500 h-full w-full rounded-full transition-all duration-100 ease-linear';
-      }
-    }
-
-    function startGame() {
-      // --- もいちど遊ぶ、リピート時の判定優先度順 ---
-      if (selectedModeLabel.includes('ひらがな') && (selectedModeLabel.includes('だくおん') || selectedModeLabel.includes('ようおん'))) {
-        startRandomGroupGame('hiragana_daku_yo', 5, timerMax);
-      } else if (selectedModeLabel.includes('ひらがな') && selectedModeLabel.includes('〜')) {
-        startRandomGroupGame('hiragana_row', 5, timerMax);
-      } else if (selectedModeLabel.includes('ひらがな') && selectedModeLabel.includes('だん')) {
-        startRandomGroupGame('hiragana_vowel', 10, timerMax);
-      } else if (selectedModeLabel.includes('カタカナ') && (selectedModeLabel.includes('ダクオン') || selectedModeLabel.includes('ヨウオン'))) {
-        startRandomGroupGame('katakana_daku_yo', 5, timerMax);
-      } else if (selectedModeLabel.includes('カタカナ') && selectedModeLabel.includes('〜')) {
-        startRandomGroupGame('katakana_row', 5, timerMax);
-      } else if (selectedModeLabel.includes('カタカナ') && selectedModeLabel.includes('ダン')) {
-        startRandomGroupGame('katakana_vowel', 10, timerMax);
-      } else if (selectedModeLabel.includes('えいご')) {
-        startRandomAlphabetGame();
-      } else {
-        startSpecificGame(currentLevelData, selectedModeLabel, timerMax);
-      }
-    }
-
-    // --- プレイスペース（白板）に文字を配置 ---
-    function setupGameBoard() {
-      const playArea = document.getElementById('play-area');
-      playArea.innerHTML = '';
-
-      const width = playArea.clientWidth || 320;
-      const height = playArea.clientHeight || 300;
-
-      const activeItems = [...currentLevelData];
-      const count = activeItems.length;
-
-      const isMobile = window.innerWidth < 768;
-      const btnSize = isMobile ? 54 : 76;
-
-      let cols = 3;
-      let rows = 2;
-
-      if (count <= 5) {
-        cols = 3; rows = 2;
-      } else if (count <= 10) {
-        cols = 4; rows = 3;
-      } else {
-        cols = 4; rows = 4;
-      }
-
-      const totalCells = cols * rows;
-      let cellIndices = Array.from({ length: totalCells }, (_, i) => i);
-      cellIndices = shuffleArray(cellIndices);
-
-      const cellWidth = width / cols;
-      const cellHeight = height / rows;
-
-      activeItems.forEach((item, index) => {
-        const cellIdx = cellIndices[index];
-        const cellCol = cellIdx % cols;
-        const cellRow = Math.floor(cellIdx / cols);
-
-        const paddingX = cellWidth * 0.1;
-        const paddingY = cellHeight * 0.1;
-        const randomX = paddingX + Math.random() * (cellWidth - paddingX * 2 - btnSize);
-        const randomY = paddingY + Math.random() * (cellHeight - paddingY * 2 - btnSize);
-
-        const posX = cellCol * cellWidth + randomX;
-        const posY = cellRow * cellHeight + randomY;
-
-        const btn = document.createElement('button');
-        btn.id = `item-btn-${index}`;
-
-        const color = colorPalette[index % colorPalette.length];
-        btn.style.color = color.text;
-        btn.style.backgroundColor = color.bg;
-        btn.style.borderColor = color.text;
-
-        const isYo = item.length === 2;
-        const flexClass = isYo ? "" : "flex items-center justify-center";
-        
-        btn.className = `absolute select-none font-black rounded-2xl md:rounded-3xl border-2 md:border-4 shadow-md md:shadow-lg ${flexClass} transition-all duration-150 transform active:scale-95 active:shadow-sm floating-number cursor-pointer`;
-        
-        btn.style.width = `${btnSize}px`;
-        btn.style.height = `${btnSize}px`;
-        btn.style.left = `${posX}px`;
-        btn.style.top = `${posY}px`;
-        btn.style.animationDelay = `${Math.random() * 2}s`;
-
-        if (isYo) {
-          const char1 = item[0];
-          const char2 = item[1];
-
-          const span1 = document.createElement('span');
-          span1.textContent = char1;
-          span1.className = "absolute left-[10%] top-[8%] text-[24px] md:text-[38px] font-black leading-none";
-
-          const span2 = document.createElement('span');
-          span2.textContent = char2;
-          span2.className = "absolute right-[8%] bottom-[8%] text-[20px] md:text-[28px] font-black leading-none";
-
-          btn.appendChild(span1);
-          btn.appendChild(span2);
-        } else {
-          btn.textContent = item;
-          btn.className += " text-3xl md:text-5xl";
-        }
-
-        const handleTap = (e) => {
-          e.preventDefault();
-          onItemTap(index, item);
-        };
-        btn.addEventListener('click', handleTap);
-        btn.addEventListener('touchstart', handleTap);
-
-        playArea.appendChild(btn);
-      });
-    }
-
-    function shuffleArray(array) {
-      const arr = [...array];
-      for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-      }
-      return arr;
-    }
-
-    // --- ターゲット表示(つぎにタップするもじ)の更新 ---
-    function updateNextTargetUI(item) {
-      const targetEl = document.getElementById('next-number-target');
-      if (!targetEl) return;
-      
-      targetEl.innerHTML = '';
-      const isYo = item.length === 2;
-
-      // 跳ねるアニメーションを一度完全にリセットします（不透明度の干渉を防ぐため）
-      targetEl.classList.remove('animate-bounce');
-
-      if (isYo) {
-        targetEl.className = "relative inline-block text-rose-500 w-11 h-11 md:w-16 md:h-16 shrink-0 transition-opacity duration-1000";
-        
-        const char1 = item[0];
-        const char2 = item[1];
-
-        const span1 = document.createElement('span');
-        span1.textContent = char1;
-        span1.className = "absolute left-[5%] top-[5%] text-[24px] md:text-[34px] font-black leading-none";
-
-        const span2 = document.createElement('span');
-        span2.textContent = char2;
-        span2.className = "absolute right-[5%] bottom-[5%] text-[18px] md:text-[24px] font-black leading-none";
-
-        targetEl.appendChild(span1);
-        targetEl.appendChild(span2);
-      } else {
-        targetEl.className = "relative inline-block text-3xl md:text-6xl font-black text-rose-500 transition-opacity duration-1000";
-        targetEl.textContent = item;
-      }
-
-      if (hintTimer) {
-        clearTimeout(hintTimer);
-        hintTimer = null;
-      }
-
-      const currentPoints = getCumulativePoints();
-      if (currentPoints >= 7) {
-        targetEl.classList.add('opacity-0');
-        targetEl.classList.remove('opacity-100');
-
-        hintTimer = setTimeout(() => {
-          if (gameActive) {
-            targetEl.classList.remove('opacity-0');
-            targetEl.classList.add('opacity-100');
             
-            setTimeout(() => {
-              if (gameActive) targetEl.classList.add('animate-bounce');
-            }, 1000);
-          }
-        }, 7000);
-      } else {
-        targetEl.classList.remove('opacity-0');
-        targetEl.classList.add('opacity-100', 'animate-bounce');
-      }
-    }
+            <div id="collapsed-info" class="flex-1 overflow-hidden">
+                <h1 id="header-title" class="text-xs font-bold text-gray-800 tracking-tight whitespace-nowrap">拠点を探す</h1>
+                <div id="status-badge" class="text-[9px] text-gray-400 font-medium italic whitespace-nowrap">読込中...</div>
+            </div>
 
-    // --- タップイベントハンドリング ---
-    function onItemTap(index, item) {
-      if (!gameActive) return;
-
-      const targetItem = currentLevelData[nextToTapIndex];
-
-      if (item === targetItem) {
-        const btn = document.getElementById(`item-btn-${index}`);
-        if (btn) {
-          const rect = btn.getBoundingClientRect();
-          const centerX = rect.left + rect.width / 2;
-          const centerY = rect.top + rect.height / 2;
-          createSparkles(centerX, centerY, btn.style.color);
-
-          btn.style.transform = 'scale(0)';
-          btn.style.opacity = '0';
-          setTimeout(() => btn.remove(), 200);
-        }
-
-        playSound('correct');
-        playSpeech(item);
-
-        nextToTapIndex++;
-
-        if (nextToTapIndex >= currentLevelData.length) {
-          setTimeout(() => showResultScreen(true), 300);
-        } else {
-          updateNextTargetUI(currentLevelData[nextToTapIndex]);
-          
-          const nextItem = currentLevelData[nextToTapIndex];
-          setTimeout(() => {
-            if (gameActive) playSpeech(nextItem);
-          }, 650);
-        }
-      } else {
-        currentGameMissCount++;
+            <div id="collapsed-icons" class="flex items-center gap-1.5 px-2 text-gray-400 border-l border-gray-100 ml-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 8.293A1 1 0 013 7.586V4z" />
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </div>
+        </div>
         
-        const btn = document.getElementById(`item-btn-${index}`);
-        if (btn) {
-          btn.classList.add('animate-shake');
-          setTimeout(() => btn.classList.remove('animate-shake'), 400);
+        <div id="search-area" class="hidden opacity-0 flex flex-col md:flex-row gap-2 w-full px-2 pb-2 md:pb-0 md:pr-2 transition-opacity duration-200">
+            <!-- カテゴリフィルター -->
+            <div class="relative w-full md:w-36 shrink-0">
+                <select id="category-filter" class="w-full pl-3 pr-8 py-1.5 bg-gray-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none">
+                    <option value="all">すべてのカテゴリ</option>
+                    <option value="namacon">生コン</option>
+                    <option value="kenzai">建材</option>
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                    <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+            </div>
+
+            <div class="relative flex-1">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-500">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 8.293A1 1 0 013 7.586V4z" />
+                    </svg>
+                </span>
+                <input type="text" id="search-input" placeholder="キーワードで絞り込み" 
+                    class="w-full pl-8 pr-4 py-1.5 bg-gray-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+                >
+            </div>
+            <div class="relative flex-1 flex gap-1">
+                <div class="relative flex-1">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-emerald-500">
+                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </span>
+                    <input type="text" id="address-search-input" placeholder="住所・地名を検索" 
+                        class="w-full pl-8 pr-4 py-1.5 bg-gray-100 border-none rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 transition-all outline-none"
+                    >
+                </div>
+                <button id="address-search-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors text-nowrap shadow-sm">移動</button>
+                <button id="circle-clear-btn" class="hidden bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors text-nowrap shadow-sm">クリア</button>
+            </div>
+            <!-- 閉じるボタン -->
+            <button id="collapse-btn" class="hidden md:block text-gray-300 hover:text-gray-600 p-1 shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main><div id="map"></div></main>
+
+    <script>
+        /**
+         * --- 設定エリア ---
+         */
+        const GOOGLE_MAPS_API_KEY = "AIzaSyDYg1z0rVrz1S3KkKqiHpWBcBzjtNr-eKY"; 
+        
+        const PUBLIC_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=2020407894&single=true&output=csv';
+        const VIP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQRRB7Mevb336kNro8ri117cLUvo8wphBkoZdWsDCXmSry6hbYWfnjfjG8tUzSsGSlwe-BO_w4vAsto/pub?gid=548100284&single=true&output=csv';
+        const CORRECTION_GAS_URL = "https://script.google.com/macros/s/AKfycbza6D9o3nwIpQbzZRx3BXFwJnpkBO8R3OH9nmTtszExj1EvShdXyiXj1tQcx169hGiaPQ/exec"; 
+
+        let map, geocoder, infoWindow, oms;
+        let markers = [];
+        let allData = [];
+        let currentUrl = PUBLIC_CSV_URL;
+        let isExpanded = false;
+        let isViewRestored = false;
+        let labelsGloballyVisible = false; 
+        let currentCircle = null; // ピンクリック用のサークルオブジェクト
+        let addressCircle = null; // 住所検索用のサークルオブジェクト
+        let isFirstRenderDone = false; 
+
+        // カテゴリごとの色設定
+        const CATEGORY_STYLES = {
+            "！(廃業)": { fill: "#4b5563", stroke: "white" }, 
+            "◆管理用": { fill: "#9333ea", stroke: "white" }, 
+            "green(建材-直接)": { fill: "#138D75", stroke: "white" }, 
+            "pink(生コン-間接)": { fill: "#F5B041", stroke: "white" }, 
+            "red(生コン-直接)": { fill: "#E67E22", stroke: "white" }, 
+            "sky-blue(取引無し)": { fill: "#7D6D8B", stroke: "white" }, 
+            "white(材料無し)": { fill: "#A89BB8", stroke: "white" }, 
+            "yellow(建材-間接)": { fill: "#48C9B0", stroke: "white" },
+            "建材生コン-直接": { fill: "#B7950B", stroke: "white" },
+            "建材生コン-間接": { fill: "#D4AC0D", stroke: "white" }
+        };
+
+        // 通常の丸いピンアイコン（判定エリア拡張版・面積比2倍・完全にフラット化して軽量化）
+        function getExpandedIcon(fillColor, strokeColor = "white") {
+            const svg = `
+                <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
+                    <!-- 先端(30,39)を基準に1.414倍(面積2倍)に拡大。描画負荷となる重いfilter処理はすべて廃止 -->
+                    <g transform="translate(30, 39) scale(1.414) translate(-30, -39)">
+                        <path d="M30 15c-4.42 0-8 3.58-8 8 0 6 8 16 8 16s8-10 8-16c0-4.42-3.58-8-8-8zm0 10.8c-1.55 0-2.8-1.25-2.8-2.8s1.25-2.8 2.8-2.8 2.8 1.25 2.8 2.8-1.25 2.8-2.8 2.8z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.06"/>
+                    </g>
+                </svg>
+            `;
+            return {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                size: new google.maps.Size(60, 60),
+                scaledSize: new google.maps.Size(60, 60),
+                anchor: new google.maps.Point(30, 39),
+                labelOrigin: new google.maps.Point(30, 48)
+            };
         }
-        playSound('wrong');
-      }
-    }
 
-    // --- 24時間ポイント同期(Firestore連携) ---
-    async function initFirebaseStorage() {
-      const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-      const app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-      appId = app_id;
+        // 廃業カテゴリ用の警告アイコン（三角の中に！・完全にフラット化して軽量化）
+        function getWarningExpandedIcon(fillColor, strokeColor = "white") {
+            const svg = `
+                <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
+                    <g>
+                        <!-- 三角形の背景 -->
+                        <path d="M30 14 L14 42 L46 42 Z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2.5" stroke-linejoin="round"/>
+                        <!-- エクスクラメーションマーク -->
+                        <line x1="30" y1="22" x2="30" y2="33" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+                        <circle cx="30" cy="38" r="2.2" fill="white"/>
+                    </g>
+                </svg>
+            `;
+            return {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                size: new google.maps.Size(60, 60),
+                scaledSize: new google.maps.Size(60, 60),
+                anchor: new google.maps.Point(30, 43.5),
+                labelOrigin: new google.maps.Point(30, 52)
+            };
+        }
 
-      if (firebaseConfigStr && window.FirebaseSDK) {
-        try {
-          const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore } = window.FirebaseSDK;
-          
-          const firebaseConfig = JSON.parse(firebaseConfigStr);
-          const app = initializeApp(firebaseConfig);
-          auth = getAuth(app);
-          db = getFirestore(app);
+        function loadGoogleMaps() {
+            const script = document.createElement("script");
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initMap`;
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+        }
 
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            await signInWithCustomToken(auth, __initial_auth_token);
-          } else {
-            await signInAnonymously(auth);
-          }
+        window.initMap = function() {
+            const savedView = localStorage.getItem('map_last_view');
+            const savedDate = localStorage.getItem('map_last_view_date');
+            let initialCenter = { lat: 35.6812, lng: 139.7671 };
+            let initialZoom = 12;
+            let initialMapTypeId = 'satellite'; // デフォルトを衛星写真に設定
 
-          onAuthStateChanged(auth, async (user) => {
-            if (user) {
-              await loadPointsFromFirestore();
+            // 1週間以上経過していたらリセット
+            if (savedDate) {
+                const lastViewDate = new Date(parseInt(savedDate));
+                const oneWeekAgo = new Date();
+                oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+                if (lastViewDate < oneWeekAgo) {
+                    localStorage.removeItem('map_last_view');
+                    localStorage.removeItem('map_last_view_date');
+                    console.log('Map view settings reset due to age.');
+                }
             }
-          });
-        } catch (e) {
-          console.log("Firebase init fallback:", e);
+            
+            const currentSavedView = localStorage.getItem('map_last_view');
+            if (currentSavedView) {
+                try {
+                    const view = JSON.parse(currentSavedView);
+                    initialCenter = view.center;
+                    initialZoom = view.zoom;
+                    if (view.mapTypeId) initialMapTypeId = view.mapTypeId; // 前回の状態があれば引き継ぐ
+                    isViewRestored = true;
+                } catch (e) { console.error("Restore Error", e); }
+            }
+
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: initialCenter,
+                zoom: initialZoom,
+                mapTypeId: initialMapTypeId, 
+                mapTypeControl: true,
+                mapTypeControlOptions: { position: google.maps.ControlPosition.LEFT_BOTTOM }, 
+                streetViewControl: true,
+                zoomControl: true,
+                zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }
+            });
+
+            geocoder = new google.maps.Geocoder();
+            infoWindow = new google.maps.InfoWindow();
+
+            oms = new OverlappingMarkerSpiderfier(map, {
+                markersWontMove: true,
+                markersWontHide: true,
+                basicFormatEvents: true,
+                keepSpiderfied: true
+            });
+
+            // 地図クリックで吹き出しとサークルを閉じる
+            map.addListener('click', () => { 
+                if (infoWindow) infoWindow.close(); 
+                clearCurrentCircle();
+            });
+
+            // 吹き出しの「×」で閉じた時もサークルを消す
+            infoWindow.addListener('closeclick', () => {
+                clearCurrentCircle();
+            });
+
+            // ズーム操作が開始された瞬間に、すべてのマーカーを一時的に非表示にして高速化する
+            map.addListener('zoom_changed', () => {
+                markers.forEach(m => {
+                    m.setMap(null);
+                });
+            });
+
+            // マップ移動やズーム・種類変更時に状態を保存
+            map.addListener('idle', () => {
+                const bounds = map.getBounds();
+                if (!bounds) return;
+
+                const viewState = {
+                    center: { lat: map.getCenter().lat(), lng: map.getCenter().lng() },
+                    zoom: map.getZoom(),
+                    mapTypeId: map.getMapTypeId() // マップの種類（衛星など）も保存
+                };
+                localStorage.setItem('map_last_view', JSON.stringify(viewState));
+                localStorage.setItem('map_last_view_date', Date.now().toString()); // 保存日時を記録
+
+                let visibleMarkers = markers.filter(m => bounds.contains(m.getPosition()));
+                labelsGloballyVisible = visibleMarkers.length <= 30;
+
+                markers.forEach(m => {
+                    // マップ上に再表示
+                    m.setMap(map);
+
+                    if (labelsGloballyVisible) {
+                        if (!m.getLabel()) {
+                            m.setLabel({
+                                text: m.fullLabel,
+                                className: 'marker-label',
+                                anchor: new google.maps.Point(m.fullLabel.length * 3.5, 0)
+                            });
+                        }
+                    } else {
+                        m.setLabel(null);
+                    }
+                });
+            });
+
+            // マーカークリック時の処理
+            oms.addListener('click', function(marker) {
+                // サークルの描画（7km）
+                showRadiusCircle(marker.getPosition());
+                
+                infoWindow.setContent(marker.desc);
+                infoWindow.open(map, marker);
+            });
+
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('mode') === 'vip') {
+                enableVipMode();
+            } else {
+                fetchData(PUBLIC_CSV_URL);
+            }
+
+            setupHeaderToggle();
+        };
+
+        // 指定座標を中心に半径7kmの円を表示
+        function showRadiusCircle(center) {
+            clearCurrentCircle();
+            currentCircle = new google.maps.Circle({
+                strokeColor: '#3b82f6', // 青
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillOpacity: 0, // 塗りつぶしなし
+                map: map,
+                center: center,
+                radius: 7000, 
+                clickable: false 
+            });
         }
-      } else {
-        console.log("Offline mode: Using in-memory store.");
-      }
-      updatePointsUI();
-    }
 
-    async function saveAllHistoryToFirestore() {
-      if (db && auth && auth.currentUser) {
-        try {
-          const { doc, setDoc } = window.FirebaseSDK;
-          const docRef = doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'points', 'history');
-          await setDoc(docRef, { history: pointHistory });
-        } catch (e) {
-          console.error("Firestore save error:", e);
+        // 表示中の円を削除
+        function clearCurrentCircle() {
+            if (currentCircle) {
+                currentCircle.setMap(null);
+                currentCircle = null;
+            }
         }
-      }
-    }
 
-    async function addPointsToHistory(points) {
-      if (points <= 0) return;
-
-      const wasMaxBefore = getCumulativePoints() >= 10;
-      const levelKey = getLevelKey(selectedModeLabel, currentCategory);
-      const isFullMark = (currentGameMissCount === 0); // ノーミスクリア時のみ満点フラグを真に
-
-      // 履歴オブジェクトのデータ構造を拡張
-      pointHistory.push({
-        timestamp: Date.now(),
-        points: points,
-        category: currentCategory,
-        levelKey: levelKey,
-        isFullMark: isFullMark
-      });
-
-      cleanOldPoints();
-      updatePointsUI();
-
-      const currentSum = getCumulativePoints();
-      if (currentSum >= 10 && !wasMaxBefore) {
-        setTimeout(() => {
-          playSpeech('やったー！10てん たっせい！ おめでとう！');
-          for (let i = 0; i < 3; i++) {
-            setTimeout(startCelebration, i * 400);
-          }
-        }, 1500);
-      }
-
-      await saveAllHistoryToFirestore();
-    }
-
-    async function loadPointsFromFirestore() {
-      if (db && auth && auth.currentUser) {
-        try {
-          const { doc, getDoc } = window.FirebaseSDK;
-          const docRef = doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'points', 'history');
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            pointHistory = docSnap.data().history || [];
-            cleanOldPoints();
-            updatePointsUI();
-          }
-        } catch (e) {
-          console.error("Firestore load error:", e);
+        // 住所検索用のサークルを削除
+        function clearAddressCircle() {
+            if (addressCircle) {
+                addressCircle.setMap(null);
+                addressCircle = null;
+            }
+            document.getElementById('circle-clear-btn').classList.add('hidden');
         }
-      }
-    }
 
-    function cleanOldPoints() {
-      const now = Date.now();
-      const oneDay = 24 * 60 * 60 * 1000;
-      pointHistory = pointHistory.filter(item => (now - item.timestamp) < oneDay);
-    }
+        function setupHeaderToggle() {
+            const header = document.getElementById('main-header');
+            const toggleArea = document.getElementById('header-toggle');
+            const searchArea = document.getElementById('search-area');
+            const collapsedIcons = document.getElementById('collapsed-icons');
+            const collapseBtn = document.getElementById('collapse-btn');
 
-    // 10点で制限せず、24時間以内に獲得したすべてのポイントを合計して返す
-    function getCumulativePoints() {
-      cleanOldPoints();
-      let total = 0;
-      for (let i = 0; i < pointHistory.length; i++) {
-        total += (pointHistory[i].points || 0);
-      }
-      return total;
-    }
-
-    function updatePointsUI() {
-      const currentPoints = getCumulativePoints();
-      const pointsText = document.getElementById('cumulative-points-text');
-      const board = document.getElementById('point-board');
-      const starGauge = document.getElementById('star-gauge');
-
-      if (!pointsText || !board || !starGauge) return;
-
-      pointsText.textContent = currentPoints;
-
-      starGauge.innerHTML = '';
-      const displayStars = Math.min(10, currentPoints); // 星ゲージ自体は最大10個で維持
-      for (let i = 1; i <= 10; i++) {
-        const star = document.createElement('span');
-        if (i <= displayStars) {
-          star.textContent = '⭐';
-          star.className = 'text-amber-400 drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)] transform scale-110 inline-block animate-bounce';
-          star.style.animationDelay = `${i * 0.1}s`;
-        } else {
-          star.textContent = '☆';
-          star.className = 'text-gray-300';
+            function toggle() {
+                isExpanded = !isExpanded;
+                if (isExpanded) {
+                    header.classList.replace('header-collapsed', 'header-expanded');
+                    collapsedIcons.classList.add('hidden');
+                    setTimeout(() => {
+                        searchArea.classList.remove('hidden');
+                        setTimeout(() => searchArea.classList.add('opacity-100'), 50);
+                    }, 100);
+                } else {
+                    searchArea.classList.remove('opacity-100');
+                    setTimeout(() => {
+                        searchArea.classList.add('hidden');
+                        header.classList.replace('header-expanded', 'header-collapsed');
+                        collapsedIcons.classList.remove('hidden');
+                    }, 100);
+                }
+            }
+            toggleArea.onclick = () => { toggle(); };
+            if (collapseBtn) { collapseBtn.onclick = (e) => { e.stopPropagation(); toggle(); }; }
         }
-        starGauge.appendChild(star);
-      }
 
-      if (currentPoints >= 10) {
-        board.className = 'flex flex-row md:flex-col items-center justify-between md:justify-center p-2 md:p-3 soda-bg rounded-2xl border-2 border-amber-300 gap-2 w-full text-white shadow-lg';
-        pointsText.className = 'text-2xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]';
-      } else {
-        board.className = 'flex flex-row md:flex-col items-center justify-between md:justify-center p-2 md:p-3 bg-amber-50 rounded-2xl border-2 border-amber-300 gap-2 w-full';
-        pointsText.className = 'text-2xl md:text-4xl font-black text-orange-500';
-      }
-    }
-
-
-    // --- キラキラ・クラッカーエフェクト (Canvas) ---
-    const canvas = document.getElementById('effect-canvas');
-    const ctx = canvas.getContext('2d');
-    let particles = [];
-
-    function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
-    class Particle {
-      constructor(x, y, color, type = 'star') {
-        this.x = x;
-        this.y = y;
-        this.color = color;
-        this.type = type;
-        this.size = Math.random() * 10 + 5;
-        this.speedX = (Math.random() - 0.5) * 8;
-        this.speedY = (Math.random() - 0.5) * 8 - (type === 'confe' ? 4 : 0);
-        this.gravity = 0.2;
-        this.angle = Math.random() * Math.PI * 2;
-        this.spin = (Math.random() - 0.5) * 0.1;
-        this.opacity = 1;
-        this.decay = Math.random() * 0.02 + 0.015;
-      }
-
-      update() {
-        this.x += this.speedX;
-        this.y += this.speedY;
-        this.speedY += this.gravity;
-        this.angle += this.spin;
-        this.opacity -= this.decay;
-        if (this.opacity < 0) this.opacity = 0;
-      }
-
-      draw() {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.angle);
-        ctx.globalAlpha = this.opacity;
-        ctx.fillStyle = this.color;
-
-        if (this.type === 'star') {
-          ctx.beginPath();
-          for (let i = 0; i < 5; i++) {
-            ctx.lineTo(Math.cos((18 + i * 72) * Math.PI / 180) * this.size,
-                       -Math.sin((18 + i * 72) * Math.PI / 180) * this.size);
-            ctx.lineTo(Math.cos((54 + i * 72) * Math.PI / 180) * (this.size / 2),
-                       -Math.sin((54 + i * 72) * Math.PI / 180) * (this.size / 2));
-          }
-          ctx.closePath();
-          ctx.fill();
-        } else {
-          ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size/2);
+        function enableVipMode() {
+            currentUrl = VIP_CSV_URL;
+            document.getElementById('header-title').textContent = "管理者マップ ★";
+            fetchData(VIP_CSV_URL);
         }
-        ctx.restore();
-      }
-    }
 
-    function createSparkles(x, y, color) {
-      for (let i = 0; i < 15; i++) {
-        particles.push(new Particle(x, y, color, 'star'));
-      }
-    }
-
-    function startCelebration() {
-      const colors = ['#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
-      for (let i = 0; i < 30; i++) {
-        particles.push(new Particle(100, window.innerHeight - 50, colors[Math.floor(Math.random() * colors.length)], 'confe'));
-        particles.push(new Particle(window.innerWidth - 100, window.innerHeight - 50, colors[Math.floor(Math.random() * colors.length)], 'confe'));
-      }
-    }
-
-    function animate() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particles.forEach((p, index) => {
-        p.update();
-        p.draw();
-        if (p.opacity <= 0) {
-          particles.splice(index, 1);
+        async function fetchData(url) {
+            document.getElementById('status-badge').textContent = "読込中...";
+            Papa.parse(url, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    allData = results.data;
+                    renderMarkers(document.getElementById('search-input').value);
+                }
+            });
         }
-      });
-      requestAnimationFrame(animate);
-    }
-    animate();
 
-    // --- 起動時処理 (より近代的なロード登録に変更) ---
-    window.addEventListener('load', function() {
-      initBubbles();
-      changeCategory('number'); // 初期カテゴリはすうじ
-      initFirebaseStorage();    // ポイント管理とクラウド同期の初期化
-    });
-  </script>
+        function renderMarkers(keyword) {
+            markers.forEach(m => m.setMap(null));
+            markers = [];
+            oms.clearMarkers();
+            clearCurrentCircle();
+
+            const lowerKeyword = keyword.toLowerCase();
+            const selectedCategory = document.getElementById('category-filter').value;
+
+            if (allData.length === 0) return;
+            
+            const keys = Object.keys(allData[0]);
+            const latKey = keys.find(k => ['緯度', 'lat'].some(kw => k.toLowerCase().includes(kw)));
+            const lngKey = keys.find(k => ['経度', 'lng'].some(kw => k.toLowerCase().includes(kw)));
+            const nameKey = keys.find(k => ['名', 'name', 'タイトル', '会社名'].some(kw => k.toLowerCase().includes(kw)));
+            const categoryKey = keys.find(k => ['カテゴリ', 'category'].some(kw => k.toLowerCase().includes(kw)));
+
+            const bounds = new google.maps.LatLngBounds();
+            let count = 0;
+
+            const pinColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444";
+            const customIcon = getExpandedIcon(pinColor);
+
+            allData.forEach((row, i) => {
+                // カテゴリ絞り込み判定
+                const catValue = categoryKey ? row[categoryKey]?.trim() : null;
+                if (categoryKey && selectedCategory !== 'all') {
+                    if (selectedCategory === 'namacon') {
+                        const validCats = ['red(生コン-直接)', 'pink(生コン-間接)', '建材生コン-直接', '建材生コン-間接', '！(廃業)', 'sky-blue(取引無し)'];
+                        if (!validCats.includes(catValue)) return;
+                    } else if (selectedCategory === 'kenzai') {
+                        const validCats = ['yellow(建材-間接)', 'green(建材-直接)', '建材生コン-直接', '建材生コン-間接', '！(廃業)', 'sky-blue(取引無し)'];
+                        if (!validCats.includes(catValue)) return;
+                    }
+                }
+
+                if (!Object.values(row).some(v => String(v).toLowerCase().includes(lowerKeyword))) return;
+
+                const lat = parseFloat(row[latKey]?.replace(/[^\d.-]/g, ''));
+                const lng = parseFloat(row[lngKey]?.replace(/[^\d.-]/g, ''));
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    const pos = { lat, lng };
+                    const companyName = row[nameKey] || `地点 ${i+1}`;
+
+                    let fillColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444";
+                    let strokeColor = "white";
+                    
+                    if (catValue && CATEGORY_STYLES[catValue]) {
+                        fillColor = CATEGORY_STYLES[catValue].fill;
+                        strokeColor = CATEGORY_STYLES[catValue].stroke;
+                    }
+
+                    // 「！(廃業)」の時は三角形の警告アイコンを使用、それ以外は丸いピン
+                    const customIcon = (catValue === "！(廃業)") 
+                        ? getWarningExpandedIcon(fillColor, strokeColor)
+                        : getExpandedIcon(fillColor, strokeColor);
+
+                    const marker = new google.maps.Marker({ 
+                        position: pos, 
+                        map: map,
+                        icon: customIcon
+                    });
+                    
+                    marker.fullLabel = companyName;
+
+                    marker.addListener('mouseover', () => {
+                        if (!labelsGloballyVisible) {
+                            marker.setLabel({
+                                text: marker.fullLabel,
+                                className: 'marker-label',
+                                anchor: new google.maps.Point(marker.fullLabel.length * 3.5, 0)
+                            });
+                        }
+                    });
+
+                    marker.addListener('mouseout', () => {
+                        if (!labelsGloballyVisible) {
+                            marker.setLabel(null);
+                        }
+                    });
+                    
+                    const safeName = companyName.replace(/'/g, "\\'");
+                    let content = `
+                        <div class="info-window-container" id="iw-${i}">
+                            <div class="correction-trigger" title="修正依頼" onclick="toggleCorrectionForm('iw-${i}')">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                            </div>
+                            <div class="info-header"><div class="info-title">${companyName}</div></div>
+                            <div class="info-data-area">
+                                ${Object.entries(row).map(([k, v]) => {
+                                    if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
+                                        return `<span class="info-label">${k}</span><div class="info-content-value">${v}</div>`;
+                                    }
+                                    return '';
+                                }).join('')}
+                            </div>
+                            <div class="correction-form">
+                                <p class="text-[11px] font-bold text-red-600 mb-2">修正内容を入力してください</p>
+                                <textarea class="correction-textarea" placeholder="例：住所が間違っています。"></textarea>
+                                <button class="correction-submit-btn" onclick="submitCorrection('${safeName}', 'iw-${i}')">送信する</button>
+                                <div class="correction-error-msg text-[10px] text-red-500 mt-2 hidden"></div>
+                            </div>
+                        </div>`;
+
+                    marker.desc = content;
+                    oms.addMarker(marker);
+                    markers.push(marker);
+                    bounds.extend(pos);
+                    count++;
+                }
+            });
+
+            const badge = document.getElementById('status-badge');
+            const isVIP = currentUrl === VIP_CSV_URL;
+            badge.textContent = isVIP ? `★ VIP: ${count}件` : `${count}件表示中`;
+            badge.className = isVIP ? "text-[9px] text-blue-600 font-bold" : "text-[9px] text-gray-400 font-medium";
+            
+            // 初回表示時かつ位置復元がない場合のみ、全件収まるように調整
+            if (!isFirstRenderDone && !isViewRestored && keyword === "" && count > 0) {
+                map.fitBounds(bounds);
+            }
+            
+            isFirstRenderDone = true; // 初回描画完了を記録
+            
+            google.maps.event.trigger(map, 'idle');
+        }
+
+        window.toggleCorrectionForm = function(id) {
+            const container = document.getElementById(id);
+            const form = container.querySelector('.correction-form');
+            const dataArea = container.querySelector('.info-data-area');
+            const isVisible = form.style.display === 'block';
+            form.style.display = isVisible ? 'none' : 'block';
+            dataArea.style.display = isVisible ? 'block' : 'none';
+        };
+
+        window.submitCorrection = async function(companyName, id) {
+            const container = document.getElementById(id);
+            const textarea = container.querySelector('.correction-textarea');
+            const btn = container.querySelector('.correction-submit-btn');
+            const errorArea = container.querySelector('.correction-error-msg');
+            const comment = textarea.value.trim();
+            if (!comment) { errorArea.textContent = "※入力してください。"; errorArea.classList.remove('hidden'); return; }
+            btn.disabled = true; btn.innerHTML = "...";
+            try {
+                const url = `${CORRECTION_GAS_URL}?name=${encodeURIComponent(companyName)}&comment=${encodeURIComponent(comment)}`;
+                await fetch(url, { mode: 'no-cors' });
+                container.innerHTML = `<div class="py-10 text-center text-green-600 font-bold text-sm">送信完了</div>`;
+            } catch (e) {
+                errorArea.textContent = "失敗。"; errorArea.classList.remove('hidden');
+                btn.disabled = false; btn.innerHTML = "送信する";
+            }
+        };
+
+        // 住所検索を実行し、中心に7kmの白いサークルを描画する
+        function searchAddress() {
+            const q = document.getElementById('address-search-input').value;
+            if (!q) return;
+
+            const badge = document.getElementById('status-badge');
+            const originalText = badge.textContent;
+            badge.textContent = "住所を検索中...";
+            badge.className = "text-[9px] text-blue-500 font-bold italic";
+
+            geocoder.geocode({ address: q }, (res, status) => {
+                if (status === 'OK') {
+                    const location = res[0].geometry.location;
+                    map.setCenter(location);
+                    map.setZoom(12); // 7kmの円が見やすい適切なズームレベル
+
+                    // 既存の住所検索サークルを消去
+                    clearAddressCircle();
+
+                    // 新しい白色サークルを描画（半径7km = 7000m）
+                    addressCircle = new google.maps.Circle({
+                        strokeColor: '#ffffff', // 白色
+                        strokeOpacity: 0.9,
+                        strokeWeight: 3, // 太さ3pxで見やすく
+                        fillOpacity: 0, // 塗りつぶしなし
+                        map: map,
+                        center: location,
+                        radius: 7000, 
+                        clickable: false 
+                    });
+
+                    // ステータス表示を戻す
+                    badge.textContent = originalText;
+                    badge.className = currentUrl === VIP_CSV_URL ? "text-[9px] text-blue-600 font-bold" : "text-[9px] text-gray-400 font-medium";
+
+                    // クリアボタンを表示
+                    document.getElementById('circle-clear-btn').classList.remove('hidden');
+                } else {
+                    // エラーメッセージのバッジ表示（ブラウザalertは禁止ルールに準拠）
+                    badge.textContent = "⚠ 住所が見つかりません";
+                    badge.className = "text-[9px] text-red-500 font-bold";
+                    setTimeout(() => {
+                        badge.textContent = originalText;
+                        badge.className = currentUrl === VIP_CSV_URL ? "text-[9px] text-blue-600 font-bold" : "text-[9px] text-gray-400 font-medium";
+                    }, 5000);
+                }
+            });
+        }
+
+        document.getElementById('search-input').addEventListener('input', (e) => renderMarkers(e.target.value));
+        document.getElementById('category-filter').addEventListener('change', () => renderMarkers(document.getElementById('search-input').value));
+        document.getElementById('address-search-btn').onclick = searchAddress;
+        document.getElementById('address-search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchAddress(); });
+        
+        // 住所クリアボタンの処理
+        document.getElementById('circle-clear-btn').onclick = () => {
+            clearAddressCircle();
+            document.getElementById('address-search-input').value = '';
+        };
+
+        loadGoogleMaps();
+    </script>
 </body>
 </html>
