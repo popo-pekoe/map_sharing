@@ -232,13 +232,13 @@
         let addressCircle = null; // 住所検索用のサークルオブジェクト
         let isFirstRenderDone = false; 
 
-        // カテゴリごとの色設定
+        // カテゴリごとの色設定（生コン系を直感的に識別しやすく調整）
         const CATEGORY_STYLES = {
             "！(廃業)": { fill: "#4b5563", stroke: "white" }, 
             "◆管理用": { fill: "#9333ea", stroke: "white" }, 
             "green(建材-直接)": { fill: "#138D75", stroke: "white" }, 
-            "pink(生コン-間接)": { fill: "#F5B041", stroke: "white" }, 
-            "red(生コン-直接)": { fill: "#E67E22", stroke: "white" }, 
+            "pink(生コン-間接)": { fill: "#F1948A", stroke: "white" }, // ゴールド系から上品な「桜ピンク」に変更
+            "red(生コン-直接)": { fill: "#CB4335", stroke: "white" }, // オレンジ系から深みのある「赤」に変更
             "sky-blue(取引無し)": { fill: "#7D6D8B", stroke: "white" }, 
             "white(材料無し)": { fill: "#A89BB8", stroke: "white" }, 
             "yellow(建材-間接)": { fill: "#48C9B0", stroke: "white" },
@@ -367,7 +367,14 @@
                 });
             });
 
-            // マップ移動やズーム・種類変更時に状態を保存
+            // ドラッグ（地図移動）操作が開始された瞬間に、すべてのマーカーを一時的に非表示にして劇的に高速化する
+            map.addListener('dragstart', () => {
+                markers.forEach(m => {
+                    m.setMap(null);
+                });
+            });
+
+            // マップ移動やズーム・種類変更など、動きが完全に静止した時に状態保存とピン再描画を行う
             map.addListener('idle', () => {
                 const bounds = map.getBounds();
                 if (!bounds) return;
@@ -380,13 +387,21 @@
                 localStorage.setItem('map_last_view', JSON.stringify(viewState));
                 localStorage.setItem('map_last_view_date', Date.now().toString()); // 保存日時を記録
 
-                let visibleMarkers = markers.filter(m => bounds.contains(m.getPosition()));
+                // 【対策B】画面内に実際に表示されているマーカーだけを抽出・処理する
+                const visibleMarkers = [];
+                markers.forEach(m => {
+                    if (bounds.contains(m.getPosition())) {
+                        visibleMarkers.push(m);
+                        m.setMap(map); // 画面内のマーカーのみGoogle Mapsに乗せる
+                    } else {
+                        m.setMap(null); // 画面外のマーカーはGoogle Mapsから除外して描画計算負荷をゼロにする
+                    }
+                });
+
+                // 画面内にあるピンの件数が30件以下のときだけ名前ラベルを一括表示
                 labelsGloballyVisible = visibleMarkers.length <= 30;
 
-                markers.forEach(m => {
-                    // マップ上に再表示
-                    m.setMap(map);
-
+                visibleMarkers.forEach(m => {
                     if (labelsGloballyVisible) {
                         if (!m.getLabel()) {
                             m.setLabel({
@@ -420,7 +435,7 @@
             setupHeaderToggle();
         };
 
-        // 指定座標を中心に半径7kmの円を表示
+        // 指定座標を中心に半径7km of 円を表示
         function showRadiusCircle(center) {
             clearCurrentCircle();
             currentCircle = new google.maps.Circle({
