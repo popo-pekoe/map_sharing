@@ -85,6 +85,16 @@
             border-radius: 12px;
             border: 1px solid #fee2e2;
         }
+        .correction-author-input {
+            width: 100%;
+            font-size: 14px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #fca5a5;
+            margin-bottom: 8px;
+            outline: none;
+            background: white;
+        }
         .correction-textarea {
             width: 100%;
             height: 80px;
@@ -706,13 +716,17 @@
                             <div class="info-data-area">
                                 ${Object.entries(row).map(([k, v]) => {
                                     if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
-                                        return `<span class="info-label">${k}</span><div class="info-content-value">${v}</div>`;
+                                        // スプレッドシート（CSV）の元のヘッダー列名が「一般向け備考」であった場合、
+                                        // 画面上での表示を「備考」へとスマートに置き換えます。
+                                        const displayLabel = k === "一般向け備考" ? "備考" : k;
+                                        return `<span class="info-label">${displayLabel}</span><div class="info-content-value">${v}</div>`;
                                     }
                                     return '';
                                 }).join('')}
                             </div>
                             <div class="correction-form">
                                 <p class="text-[11px] font-bold text-red-600 mb-2">修正内容を入力してください</p>
+                                <input type="text" class="correction-author-input" placeholder="所属・お名前（匿名可）">
                                 <textarea class="correction-textarea" placeholder="例：住所が間違っています。"></textarea>
                                 <button class="correction-submit-btn" onclick="submitCorrection('${safeName}', 'iw-${i}')">送信する</button>
                                 <div class="correction-error-msg text-[10px] text-red-500 mt-2 hidden"></div>
@@ -753,14 +767,29 @@
 
         window.submitCorrection = async function(companyName, id) {
             const container = document.getElementById(id);
+            const authorInput = container.querySelector('.correction-author-input');
             const textarea = container.querySelector('.correction-textarea');
             const btn = container.querySelector('.correction-submit-btn');
             const errorArea = container.querySelector('.correction-error-msg');
+            
+            const author = authorInput ? authorInput.value.trim() : '';
             const comment = textarea.value.trim();
-            if (!comment) { errorArea.textContent = "※入力してください。"; errorArea.classList.remove('hidden'); return; }
-            btn.disabled = true; btn.innerHTML = "...";
+            
+            if (!comment) { 
+                errorArea.textContent = "※修正内容を入力してください。"; 
+                errorArea.classList.remove('hidden'); 
+                return; 
+            }
+            
+            btn.disabled = true; 
+            btn.innerHTML = "...";
+            
             try {
-                const url = `${CORRECTION_GAS_URL}?name=${encodeURIComponent(companyName)}&comment=${encodeURIComponent(comment)}`;
+                // 既存のGASプログラムに負荷や互換性の影響を与えないよう、
+                // 差出人の情報（匿名でない場合）はコメント欄の冒頭に自動成形して連結して送信します。
+                const combinedComment = author ? `【所属/お名前】${author}\n【修正内容】\n${comment}` : comment;
+                
+                const url = `${CORRECTION_GAS_URL}?name=${encodeURIComponent(companyName)}&comment=${encodeURIComponent(combinedComment)}&author=${encodeURIComponent(author)}`;
                 await fetch(url, { mode: 'no-cors' });
                 container.innerHTML = `<div class="py-10 text-center text-green-600 font-bold text-sm">送信完了</div>`;
             } catch (e) {
