@@ -181,7 +181,7 @@
         </div>
         
         <div id="search-area" class="hidden opacity-0 flex flex-col md:flex-row gap-2 w-full px-2 pb-2 md:pb-0 md:pr-2 transition-opacity duration-200">
-            <!-- カテゴリフィルター (iOS入力ズーム対策：モバイルでは16px、PCなど大画面では12px相当に自動で最適化) -->
+            <!-- カテゴリフィルター (iOS入力ズーム対策) -->
             <div class="relative w-full md:w-36 shrink-0">
                 <select id="category-filter" class="w-full pl-3 pr-8 py-1.5 bg-gray-100 border-none rounded-xl text-base md:text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none">
                     <option value="all">すべてのカテゴリ</option>
@@ -723,6 +723,15 @@
                                     }
                                     return '';
                                 }).join('')}
+                            </div>
+                            <!-- 本家GoogleマップアプリやWebマップで開く外部リンクボタンの追加 -->
+                            <div class="mt-4 pt-3 border-t border-gray-100 flex justify-end">
+                                <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                    Googleマップで開く
+                                </a>
                             </div>
                             <div class="correction-form">
                                 <p class="text-[11px] font-bold text-red-600 mb-2">修正内容を入力してください</p>
