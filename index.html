@@ -181,7 +181,7 @@
         </div>
         
         <div id="search-area" class="hidden opacity-0 flex flex-col md:flex-row gap-2 w-full px-2 pb-2 md:pb-0 md:pr-2 transition-opacity duration-200">
-            <!-- カテゴリフィルター (iOS入力ズーム対策) -->
+            <!-- カテゴリフィルター -->
             <div class="relative w-full md:w-36 shrink-0">
                 <select id="category-filter" class="w-full pl-3 pr-8 py-1.5 bg-gray-100 border-none rounded-xl text-base md:text-xs focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none">
                     <option value="all">すべてのカテゴリ</option>
@@ -247,15 +247,16 @@
         let labelsGloballyVisible = false; 
         let currentCircle = null; // ピンクリック用のサークルオブジェクト
         let addressCircle = null; // 住所検索用のサークルオブジェクト
+        let addressMarker = null; // 住所検索ポイント用特別ピン
         let isFirstRenderDone = false; 
 
-        // カテゴリごとの色設定（生コン系を直感的に識別しやすく調整）
+        // カテゴリごとの色設定
         const CATEGORY_STYLES = {
             "！(廃業)": { fill: "#4b5563", stroke: "white" }, 
             "◆管理用": { fill: "#9333ea", stroke: "white" }, 
             "green(建材-直接)": { fill: "#138D75", stroke: "white" }, 
-            "pink(生コン-間接)": { fill: "#F1948A", stroke: "white" }, // ゴールド系から上品な「桜ピンク」に変更
-            "red(生コン-直接)": { fill: "#CB4335", stroke: "white" }, // オレンジ系から深みのある「赤」に変更
+            "pink(生コン-間接)": { fill: "#F1948A", stroke: "white" }, 
+            "red(生コン-直接)": { fill: "#CB4335", stroke: "white" }, 
             "sky-blue(取引無し)": { fill: "#7D6D8B", stroke: "white" }, 
             "white(材料無し)": { fill: "#A89BB8", stroke: "white" }, 
             "yellow(建材-間接)": { fill: "#48C9B0", stroke: "white" },
@@ -268,7 +269,6 @@
             const svg = `
                 <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
-                    <!-- 先端(30,39)を基準に1.414倍(面積2倍)に拡大。描画負荷となる重いfilter処理はすべて廃止 -->
                     <g transform="translate(30, 39) scale(1.414) translate(-30, -39)">
                         <path d="M30 15c-4.42 0-8 3.58-8 8 0 6 8 16 8 16s8-10 8-16c0-4.42-3.58-8-8-8zm0 10.8c-1.55 0-2.8-1.25-2.8-2.8s1.25-2.8 2.8-2.8 2.8 1.25 2.8 2.8-1.25 2.8-2.8 2.8z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.06"/>
                     </g>
@@ -289,9 +289,7 @@
                 <svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="30" cy="30" r="28" fill="rgba(0,0,0,0)" />
                     <g>
-                        <!-- 三角形の背景 -->
                         <path d="M30 14 L14 42 L46 42 Z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2.5" stroke-linejoin="round"/>
-                        <!-- エクスクラメーションマーク -->
                         <line x1="30" y1="22" x2="30" y2="33" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
                         <circle cx="30" cy="38" r="2.2" fill="white"/>
                     </g>
@@ -303,6 +301,28 @@
                 scaledSize: new google.maps.Size(60, 60),
                 anchor: new google.maps.Point(30, 43.5),
                 labelOrigin: new google.maps.Point(30, 52)
+            };
+        }
+
+        // 住所検索ポイント用の特殊形状アイコン（中央に白星をあしらったエメラルドグリーンピン）
+        function getAddressSearchIcon() {
+            const svg = `
+                <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="32" cy="32" r="30" fill="rgba(0,0,0,0)" />
+                    <g transform="translate(32, 46) scale(1.3) translate(-32, -46)">
+                        <!-- ピン本体 -->
+                        <path d="M32 12c-6.63 0-12 5.37-12 12 0 9 12 22 12 22s12-13 12-22c0-6.63-5.37-12-12-12z" fill="#10b981" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+                        <!-- 中央の白色の星マーク -->
+                        <path d="M32 18l1.3 2.7 3 .4-2.1 2.1.5 3-2.7-1.4-2.7 1.4.5-3-2.1-2.1 3-.4z" fill="#ffffff"/>
+                    </g>
+                </svg>
+            `;
+            return {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                size: new google.maps.Size(64, 64),
+                scaledSize: new google.maps.Size(64, 64),
+                anchor: new google.maps.Point(32, 46),
+                labelOrigin: new google.maps.Point(32, 56)
             };
         }
 
@@ -340,7 +360,7 @@
                     const view = JSON.parse(currentSavedView);
                     initialCenter = view.center;
                     initialZoom = view.zoom;
-                    if (view.mapTypeId) initialMapTypeId = view.mapTypeId; // 前回の状態があれば引き継ぐ
+                    if (view.mapTypeId) initialMapTypeId = view.mapTypeId; 
                     isViewRestored = true;
                 } catch (e) { console.error("Restore Error", e); }
             }
@@ -354,7 +374,6 @@
                 streetViewControl: true,
                 zoomControl: true,
                 zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
-                // モバイルで常に1本指でのスムーズな地図移動・ズーム操作を許可する設定
                 gestureHandling: 'greedy' 
             });
 
@@ -394,7 +413,6 @@
                 markers.forEach(m => {
                     m.setMap(null);
                 });
-                // 移動開始時にもメニューが開いていたらスマートに閉じる
                 if (isExpanded) {
                     toggleHeader(false);
                 }
@@ -408,23 +426,21 @@
                 const viewState = {
                     center: { lat: map.getCenter().lat(), lng: map.getCenter().lng() },
                     zoom: map.getZoom(),
-                    mapTypeId: map.getMapTypeId() // マップの種類（衛星など）も保存
+                    mapTypeId: map.getMapTypeId()
                 };
                 localStorage.setItem('map_last_view', JSON.stringify(viewState));
-                localStorage.setItem('map_last_view_date', Date.now().toString()); // 保存日時を記録
+                localStorage.setItem('map_last_view_date', Date.now().toString());
 
-                // 【対策B】画面内に実際に表示されているマーカーだけを抽出・処理する
                 const visibleMarkers = [];
                 markers.forEach(m => {
                     if (bounds.contains(m.getPosition())) {
                         visibleMarkers.push(m);
-                        m.setMap(map); // 画面内のマーカーのみGoogle Mapsに乗せる
+                        m.setMap(map); 
                     } else {
-                        m.setMap(null); // 画面外のマーカーはGoogle Mapsから除外して描画計算負荷をゼロにする
+                        m.setMap(null); 
                     }
                 });
 
-                // 画面内にあるピンの件数が30件以下のときだけ名前ラベルを一括表示
                 labelsGloballyVisible = visibleMarkers.length <= 30;
 
                 visibleMarkers.forEach(m => {
@@ -442,11 +458,8 @@
                 });
             });
 
-            // マーカークリック時の処理
             oms.addListener('click', function(marker) {
-                // サークルの描画（7km）
                 showRadiusCircle(marker.getPosition());
-                
                 infoWindow.setContent(marker.desc);
                 infoWindow.open(map, marker);
             });
@@ -461,14 +474,14 @@
             setupHeaderToggle();
         };
 
-        // 指定座標を中心に半径7km of 円を表示
+        // 指定座標を中心に半径7kmの円を表示
         function showRadiusCircle(center) {
             clearCurrentCircle();
             currentCircle = new google.maps.Circle({
-                strokeColor: '#3b82f6', // 青
+                strokeColor: '#3b82f6', 
                 strokeOpacity: 0.8,
                 strokeWeight: 2,
-                fillOpacity: 0, // 塗りつぶしなし
+                fillOpacity: 0, 
                 map: map,
                 center: center,
                 radius: 7000, 
@@ -476,7 +489,7 @@
             });
         }
 
-        // 表示中の円を削除
+        // 表示中のピンクリック円を削除
         function clearCurrentCircle() {
             if (currentCircle) {
                 currentCircle.setMap(null);
@@ -484,11 +497,15 @@
             }
         }
 
-        // 住所検索用のサークルを削除
+        // 住所検索用のサークルおよび検索ポイント特別ピンを削除
         function clearAddressCircle() {
             if (addressCircle) {
                 addressCircle.setMap(null);
                 addressCircle = null;
+            }
+            if (addressMarker) {
+                addressMarker.setMap(null);
+                addressMarker = null;
             }
             document.getElementById('circle-clear-btn').classList.add('hidden');
             updateActiveFiltersPreview();
@@ -501,7 +518,6 @@
 
             previewContainer.innerHTML = '';
 
-            // メニューが開いているときはバッジ表示を非表示にする
             if (isExpanded) {
                 previewContainer.classList.add('hidden');
                 previewContainer.classList.remove('flex');
@@ -514,11 +530,9 @@
 
             let hasActiveFilter = false;
 
-            // 1. カテゴリのバッジ表示
             if (categoryVal !== 'all') {
                 hasActiveFilter = true;
                 const badge = document.createElement('span');
-                // カテゴリカラーと連動した配色
                 if (categoryVal === 'namacon') {
                     badge.className = 'text-[8px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 border border-orange-200';
                     badge.textContent = '生コン';
@@ -529,7 +543,6 @@
                 previewContainer.appendChild(badge);
             }
 
-            // 2. 検索キーワードのバッジ表示
             if (searchVal) {
                 hasActiveFilter = true;
                 const badge = document.createElement('span');
@@ -539,7 +552,6 @@
                 previewContainer.appendChild(badge);
             }
 
-            // 3. 住所（半径サークル描画中）のバッジ表示
             if (addressCircle && addressVal) {
                 hasActiveFilter = true;
                 const badge = document.createElement('span');
@@ -549,7 +561,6 @@
                 previewContainer.appendChild(badge);
             }
 
-            // 条件が1つでもある場合のみコンテナを表示
             if (hasActiveFilter) {
                 previewContainer.classList.remove('hidden');
                 previewContainer.classList.add('flex');
@@ -559,13 +570,11 @@
             }
         }
 
-        // メニューの展開・縮小を切り替える共通関数
         function toggleHeader(forceState) {
             const header = document.getElementById('main-header');
             const searchArea = document.getElementById('search-area');
             const collapsedIcons = document.getElementById('collapsed-icons');
 
-            // forceStateが指定されていればそれに従い、なければ反転
             isExpanded = (forceState !== undefined) ? forceState : !isExpanded;
 
             if (isExpanded) {
@@ -584,7 +593,6 @@
                 }, 100);
             }
 
-            // メニュー開閉状態の変更に合わせてプレビューバッジを更新
             updateActiveFiltersPreview();
         }
 
@@ -596,7 +604,7 @@
             if (collapseBtn) { 
                 collapseBtn.onclick = (e) => { 
                     e.stopPropagation(); 
-                    toggleHeader(false); // 縮小ボタンなので強制的に閉じる
+                    toggleHeader(false);
                 }; 
             }
         }
@@ -616,7 +624,6 @@
                 complete: (results) => {
                     allData = results.data;
                     renderMarkers(document.getElementById('search-input').value);
-                    // データロード後にもプレビューを一度初期化
                     updateActiveFiltersPreview();
                 }
             });
@@ -642,11 +649,7 @@
             const bounds = new google.maps.LatLngBounds();
             let count = 0;
 
-            const pinColor = currentUrl === VIP_CSV_URL ? "#2563eb" : "#ef4444";
-            const customIcon = getExpandedIcon(pinColor);
-
             allData.forEach((row, i) => {
-                // カテゴリ絞り込み判定
                 const catValue = categoryKey ? row[categoryKey]?.trim() : null;
                 if (categoryKey && selectedCategory !== 'all') {
                     if (selectedCategory === 'namacon') {
@@ -675,7 +678,6 @@
                         strokeColor = CATEGORY_STYLES[catValue].stroke;
                     }
 
-                    // 「！(廃業)」の時は三角形の警告アイコンを使用、それ以外は丸いピン
                     const customIcon = (catValue === "！(廃業)") 
                         ? getWarningExpandedIcon(fillColor, strokeColor)
                         : getExpandedIcon(fillColor, strokeColor);
@@ -716,15 +718,13 @@
                             <div class="info-data-area">
                                 ${Object.entries(row).map(([k, v]) => {
                                     if (v && v.trim() !== "" && k !== latKey && k !== lngKey && k !== nameKey) {
-                                        // スプレッドシート（CSV）の元のヘッダー列名が「一般向け備考」であった場合、
-                                        // 画面上での表示を「備考」へとスマートに置き換えます。
                                         const displayLabel = k === "一般向け備考" ? "備考" : k;
                                         return `<span class="info-label">${displayLabel}</span><div class="info-content-value">${v}</div>`;
                                     }
                                     return '';
                                 }).join('')}
                             </div>
-                            <!-- 本家GoogleマップアプリやWebマップで開く外部リンクボタンの追加 -->
+                            <!-- 本家GoogleマップアプリやWebマップで開く外部リンクボタン -->
                             <div class="mt-4 pt-3 border-t border-gray-100 flex justify-end">
                                 <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -755,12 +755,11 @@
             badge.textContent = isVIP ? `★ VIP: ${count}件` : `${count}件表示中`;
             badge.className = isVIP ? "text-[9px] text-blue-600 font-bold" : "text-[9px] text-gray-400 font-medium";
             
-            // 初回表示時かつ位置復元がない場合のみ、全件収まるように調整
             if (!isFirstRenderDone && !isViewRestored && keyword === "" && count > 0) {
                 map.fitBounds(bounds);
             }
             
-            isFirstRenderDone = true; // 初回描画完了を記録
+            isFirstRenderDone = true; 
             
             google.maps.event.trigger(map, 'idle');
         }
@@ -794,10 +793,7 @@
             btn.innerHTML = "...";
             
             try {
-                // 既存のGASプログラムに負荷や互換性の影響を与えないよう、
-                // 差出人の情報（匿名でない場合）はコメント欄の冒頭に自動成形して連結して送信します。
                 const combinedComment = author ? `【所属/お名前】${author}\n【修正内容】\n${comment}` : comment;
-                
                 const url = `${CORRECTION_GAS_URL}?name=${encodeURIComponent(companyName)}&comment=${encodeURIComponent(combinedComment)}&author=${encodeURIComponent(author)}`;
                 await fetch(url, { mode: 'no-cors' });
                 container.innerHTML = `<div class="py-10 text-center text-green-600 font-bold text-sm">送信完了</div>`;
@@ -807,7 +803,7 @@
             }
         };
 
-        // 住所検索を実行し、中心に7kmの白いサークルを描画する
+        // 住所検索を実行し、中心に7kmの白いサークルと特殊形状ピンを描画する
         function searchAddress() {
             const q = document.getElementById('address-search-input').value;
             if (!q) return;
@@ -823,10 +819,19 @@
                     map.setCenter(location);
                     map.setZoom(12); // 7kmの円が見やすい適切なズームレベル
 
-                    // 既存の住所検索サークルを消去
+                    // 既存の住所検索サークルおよび住所ポイントピンを消去
                     clearAddressCircle();
 
-                    // 新しい白色サークルを描画（半径7km = 7000m）
+                    // 1. 新しい住所検索ポイント専用ピン（星マーク付きエメラルドグリーンピン）を設置
+                    addressMarker = new google.maps.Marker({
+                        position: location,
+                        map: map,
+                        icon: getAddressSearchIcon(),
+                        title: res[0].formatted_address || q,
+                        zIndex: 9999 // 拠点ピンより手前に表示させる
+                    });
+
+                    // 2. 新しい白色サークルを描画（半径7km = 7000m）
                     addressCircle = new google.maps.Circle({
                         strokeColor: '#ffffff', // 白色
                         strokeOpacity: 0.9,
@@ -848,7 +853,6 @@
                     // 縮小時バッジを更新
                     updateActiveFiltersPreview();
                 } else {
-                    // エラーメッセージのバッジ表示（ブラウザalertは禁止ルールに準拠）
                     badge.textContent = "⚠ 住所が見つかりません";
                     badge.className = "text-[9px] text-red-500 font-bold";
                     setTimeout(() => {
@@ -880,7 +884,7 @@
         // iPad/iPhone等のブラウザで2本指ピンチ操作が行われた際、Webページ全体の強制ズームを防止する
         document.addEventListener('touchmove', function (event) {
             if (event.touches.length > 1) {
-                event.preventDefault(); // 2本指によるページ自体のピンチズーム挙動を完全無効化
+                event.preventDefault(); 
             }
         }, { passive: false });
 
